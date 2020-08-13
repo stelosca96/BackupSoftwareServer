@@ -10,7 +10,6 @@
 
 static const int max_thread = 10;
 static const int backlog = 10;
-static const int buffer_size = 10000;
 
 std::mutex mutex;
 std::mutex mutex_map;
@@ -83,6 +82,7 @@ void worker(){
                         // todo: fare qualcosa o ignorare o boh
                         break;
                 }
+                jobs.put(sock);
             }
         }
         catch (std::runtime_error& error) {
@@ -94,14 +94,15 @@ void worker(){
 bool auth(const User& user){
     auto map_user = users.find(user.getUsername());
     if (map_user == users.end()){
-        users[user.getUsername()] = user;
+        const std::string& username = user.getUsername();
+        users[username] = user;
         return true;
     }
     return map_user->second.getPassword() == user.getPassword();
 }
 
 int main() {
-    ServerSocket serverSocket(6003, backlog);
+    ServerSocket serverSocket(6015, backlog);
     std::vector<std::thread> threads;
     threads.reserve(max_thread);
     for(int i=0; i<max_thread; i++)
@@ -115,8 +116,9 @@ int main() {
             // todo: implementare select
             // todo: questo rallenta l'aggiunta di connessioni, un solo thread si occcupa di gestire l'auth, con i giusti timeout penso sia accettabile
             // todo: gestire eccezioni
-            User user(s.readJSON());
-            std::cout << "I'm here" << std::endl;
+            std::string u(s.readJSON());
+            User user(u);
+            std::cout << "username: " << user.getUsername() << std::endl;
 
             // se le credenziali sono valide lo aggiungo alla coda dei jobs,
             // altrimenti la connessione verrà chiusa poichè la socket sarà distrutta
@@ -128,6 +130,7 @@ int main() {
         }
         catch (std::runtime_error &error) {
             // todo: gestire errore
+            std::cout << error.what() << std::endl;
         }
     }
 }

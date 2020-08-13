@@ -1,0 +1,2 @@
+
+## Protocollo applicativo

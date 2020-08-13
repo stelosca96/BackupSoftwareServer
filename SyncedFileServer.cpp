@@ -17,9 +17,10 @@ static const int K_READ_BUF_SIZE{ 1024 * 16 };
 
 SyncedFileServer::SyncedFileServer(const std::string& JSON){
     // todo: gestire eccezioni
+    std::stringstream ss(JSON);
 
     boost::property_tree::ptree root;
-    boost::property_tree::read_json(JSON, root);
+    boost::property_tree::read_json(ss, root);
 
     this->hash = root.get_child("hash").data();
 

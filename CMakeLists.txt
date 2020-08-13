@@ -4,5 +4,5 @@ project(ServerBackup)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
 
-add_executable(ServerBackup main.cpp Socket.cpp SyncedFileServer.cpp UploadJobs.cpp ServerSocket.cpp Jobs.cpp User.cpp User.h)
+add_executable(ServerBackup main.cpp Socket.cpp SyncedFileServer.cpp UploadJobs.cpp ServerSocket.cpp Jobs.cpp User.cpp)
 target_link_libraries(${PROJECT_NAME} PUBLIC ssl crypto)

@@ -16,7 +16,7 @@ class string;
 class Socket {
 private:
     //todo: mettere una dimensione del buffer ragionevole
-    const static int N = 1024;
+    const static int N = 10240;
     int socket_fd;
     std::string username;
     Socket(int sockfd);
@@ -43,7 +43,7 @@ public:
 
     const std::string &getUsername() const;
 
-    void setUsername(const std::string &username);
+    void setUsername(std::string username);
 };
 
 

@@ -10,6 +10,7 @@
 #include <arpa/inet.h>
 #include <bits/stdc++.h>
 #include <fstream>
+#include <utility>
 
 Socket::Socket(int sockfd) : socket_fd(sockfd) {
     std::cout << "Socket " << sockfd << " created" << std::endl;
@@ -128,7 +129,13 @@ void Socket::sendFile(const std::shared_ptr<SyncedFileServer>& syncedFile) {
 }
 
 std::string Socket::readJSON() {
-    return std::string();
+    char buffer[N];
+    ssize_t l = 0;
+    // todo: leggere fino a quando non si incontrano i caratteri "} o qualcosa di simile
+    l+= this->read(buffer+l, N-l);
+    std::cout << "read size: " << l << std::endl;
+//    while (this->read(buffer+l, N-l)>0);
+    return buffer;
 }
 
 void Socket::askFile() {
@@ -147,8 +154,8 @@ const std::string &Socket::getUsername() const {
     return username;
 }
 
-void Socket::setUsername(const std::string &username) {
-    Socket::username = username;
+void Socket::setUsername(std::string u) {
+    this->username = std::move(u);
 }
 
 

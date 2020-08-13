@@ -13,12 +13,15 @@ private:
     std::string username;
     std::string password;
 public:
-    User(const std::string& JSON);
+    User();
+
+    explicit User(std::string JSON);
     User(const std::string &username, const std::string &password);
+    User(const User &user);
 
-    const std::string &getUsername() const;
+    [[nodiscard]] const std::string &getUsername() const;
 
-    const std::string &getPassword() const;
+    [[nodiscard]] const std::string &getPassword() const;
 
     std::string getJSON();
 };
