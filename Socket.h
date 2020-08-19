@@ -11,18 +11,23 @@
 #include <memory>
 #include "SyncedFileServer.h"
 
-class string;
-
 class Socket {
 private:
     //todo: mettere una dimensione del buffer ragionevole
     const static int N = 10240;
     int socket_fd;
+    const static int timeout_value = 20;
+
     std::string username;
     Socket(int sockfd);
-    ssize_t read(char *buffer, size_t len);
-    ssize_t write(const char *buffer, size_t len);
-    void connect(struct sockaddr_in *addr, unsigned int len);
+    ssize_t read(char *buffer, size_t len) const;
+    ssize_t write(const char *buffer, size_t len) const;
+    void connect(struct sockaddr_in *addr, unsigned int len) const;
+    bool setReadSelect(fd_set &read_fds);
+    bool setWriteSelect(fd_set &write_fds);
+
+    bool sendResp(std::string resp);
+
     friend class ServerSocket; //è friend perché voglio poter chiamare il suo costruttore privato
 
 public:
@@ -34,16 +39,23 @@ public:
 
     Socket &operator=(Socket &&other) noexcept ; // costruttore di copia per movimento
     void connectToServer(std::string address, int port);
-    void closeConnection();
-    void sendFile(const std::shared_ptr<SyncedFileServer>& syncedFile);
-    std::string readJSON();
-    void askFile();
-    std::string getFile();
+    void closeConnection() const;
+    bool sendFile(const std::shared_ptr<SyncedFileServer>& syncedFile);
+    std::optional<std::string> readJSON();
+    std::optional<std::string> getFile(int size);
     void fileError();
 
-    const std::string &getUsername() const;
-
+    [[nodiscard]] const std::string &getUsername() const;
     void setUsername(std::string username);
+
+    static std::string tempFilePath();
+
+    bool sendOKResp();
+    bool sendKOResp();
+    bool sendNOResp();
+    std::optional<std::string> getResp();
+
+    bool sendJSON(const std::string& JSON);
 };
 
 

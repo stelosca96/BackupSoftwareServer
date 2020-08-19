@@ -112,12 +112,12 @@ int main() {
             struct sockaddr addr;
             socklen_t len;
             Socket s = serverSocket.accept(&addr, &len);
-
             // todo: implementare select
             // todo: questo rallenta l'aggiunta di connessioni, un solo thread si occcupa di gestire l'auth, con i giusti timeout penso sia accettabile
             // todo: gestire eccezioni
             std::string u(s.readJSON());
             User user(u);
+            // todo: se avanza tempo si potrebbe usare diffie - hellman per scambiare chiavi e avere un canale sicuro
             std::cout << "username: " << user.getUsername() << std::endl;
 
             // se le credenziali sono valide lo aggiungo alla coda dei jobs,
