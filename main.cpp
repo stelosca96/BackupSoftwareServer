@@ -27,9 +27,10 @@ std::string getUserPath(const std::shared_ptr<Socket>& socket, std::string path)
     return p;
 }
 
-void deleteFile(const std::shared_ptr<SyncedFileServer>& sfp){
+void deleteFile(const std::shared_ptr<SyncedFileServer>& sfp, const std::shared_ptr<Socket>& sock){
     if(synced_files.find(sfp->getPath())!=synced_files.end())
         synced_files.erase(sfp->getPath());
+    sock->sendOKResp();
 }
 
 // richiedo il file solo se non è già presente o è diverso
@@ -37,13 +38,16 @@ void requestFile(const std::shared_ptr<SyncedFileServer>& sfp, const std::shared
     auto map_value = synced_files.find(sfp->getPath());
     if(map_value == synced_files.end() || map_value->second->getHash() != sfp->getHash()){
         // chiedo al client di mandarmi il file perchè non è presente
-        sock->askFile();
+        sock->sendNOResp();
 
         // ricevo il file e lo salvo in una cartella temporanea
-        std::string temp_path = sock->getFile();
-
+        std::optional<std::string> temp_path = sock->getFile(sfp->getFileSize());
+        if(!temp_path.has_value()){
+            // todo: gestire errore
+            std::cout << "Errore ricezione file" << std::endl;
+        }
         // controllo che il file ricevuto sia quello che mi aspettavo e che non ci siano stati errori
-        if(SyncedFileServer::CalcSha256(temp_path) == sfp->getHash()){
+        if(SyncedFileServer::CalcSha256(temp_path.value()) == sfp->getHash()){
             // todo: copio il file nel direttorio opportuno
             // aggiorno il valore della mappa
             synced_files[getUserPath(sock, sfp->getPath())] = sfp;
@@ -76,7 +80,7 @@ void worker(){
                         requestFile(sfp, sock);
                         break;
                     case FileStatus::erased:
-                        deleteFile(sfp);
+                        deleteFile(sfp, sock);
                         break;
                     case FileStatus::not_valid:
                         // todo: fare qualcosa o ignorare o boh
@@ -102,7 +106,7 @@ bool auth(const User& user){
 }
 
 int main() {
-    ServerSocket serverSocket(6015, backlog);
+    ServerSocket serverSocket(6016, backlog);
     std::vector<std::thread> threads;
     threads.reserve(max_thread);
     for(int i=0; i<max_thread; i++)
@@ -112,7 +116,7 @@ int main() {
             struct sockaddr addr;
             socklen_t len;
             Socket s = serverSocket.accept(&addr, &len);
-            // todo: implementare select
+            // todo: testare select
             // todo: questo rallenta l'aggiunta di connessioni, un solo thread si occcupa di gestire l'auth, con i giusti timeout penso sia accettabile
             // todo: gestire eccezioni
             std::string u(s.readJSON());

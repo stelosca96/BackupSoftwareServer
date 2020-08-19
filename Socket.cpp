@@ -114,20 +114,25 @@ bool Socket::sendFile(const std::shared_ptr<SyncedFileServer>& syncedFile) {
     return true;
 }
 
-std::optional<std::string> Socket::readJSON() {
+std::string Socket::readJSON() {
     fd_set read_fds;
     bool continue_cycle = true;
     ssize_t l = 0;
     char buffer[N];
+    std::cout << "Read JSON" << std::endl;
 
     while (l<N-1 && continue_cycle){
-        if(!setReadSelect(read_fds))
-            return std::nullopt;
+        std::cout << "WHILE" << std::endl;
+        if(!setReadSelect(read_fds)){
+            std::cout << "Select ERROR" << std::endl;
+            throw std::runtime_error("Timeout expired");
+        }
+        std::cout << "dopo WHILE" << std::endl;
         ssize_t size_read = this->read(buffer+l, N-1-l);
-
+        std::cout << buffer << std::endl;
         // se la dimensione letta è zero la socket è stata chiusa
         if(size_read==0)
-            return std::nullopt;
+            throw std::runtime_error("Socket is closed");
         l += size_read;
 
         // todo: cambiare metodo di terminzione un file può contenere il carattere } quindi non funzionerebbe
@@ -141,29 +146,47 @@ std::optional<std::string> Socket::readJSON() {
 }
 
 bool Socket::setReadSelect(fd_set &read_fds){
+    // todo: la select non funziona e non so il perchè
+
+    std::cout << "Qua 0" << std::endl;
+
     FD_ZERO(&read_fds);
     if(this->socket_fd < 0)
-        return "";
+        return false;
+    std::cout << "Qua 1" << std::endl;
+
     FD_SET(this->socket_fd, &read_fds);
     struct timeval timeout;
+    std::cout << "Qua 2" << std::endl;
     timeout.tv_sec = Socket::timeout_value;
-    if(select(this->socket_fd, &read_fds, nullptr, nullptr, &timeout)<0)
+    timeout.tv_usec = 0;
+    std::cout << "Qua 3" << std::endl;
+
+    if(select(this->socket_fd, &read_fds, nullptr, nullptr, &timeout)<=0){
+        // ritorno false sia nel caso che il tiemeout scada, sia nel caso in cui la select non vada a buon fine
+        std::cout << "Qua 4" << std::endl;
         // select error: ritorno una stringa vuota così fallirà il checksum, oppure lancio un'eccezione?
-        return "";
+        return false;
+    }
+    std::cout << "Qua 5" << std::endl;
+//    return true;
     return (FD_ISSET(this->socket_fd, &read_fds));
 }
 
 bool Socket::setWriteSelect(fd_set &write_fds){
     FD_ZERO(&write_fds);
     if(this->socket_fd < 0)
-        return "";
+        return false;
     FD_SET(this->socket_fd, &write_fds);
     struct timeval timeout;
     timeout.tv_sec = Socket::timeout_value;
-    if(select(this->socket_fd, nullptr, &write_fds, nullptr, &timeout)<0)
+    timeout.tv_usec = 0;
+    if(select(this->socket_fd, nullptr, &write_fds, nullptr, &timeout)<=0)
         // select error: ritorno una stringa vuota così fallirà il checksum, oppure lancio un'eccezione?
-        return "";
-    return (FD_ISSET(this->socket_fd, &write_fds));
+        return false;
+    return true;
+    // todo: la fd_isset non funziona e non so il perchè
+//    return (FD_ISSET(this->socket_fd, &write_fds));
 }
 
 // genero un nome temporaneo per il file dato da tempo corrente + id thread
@@ -176,11 +199,11 @@ std::string Socket::tempFilePath(){
     return ss.str();
 }
 
-std::optional<std::string> Socket::getFile(int size) {
+std::optional<std::string> Socket::getFile(unsigned long size) {
     fd_set read_fds;
     ssize_t l = 0;
     char buffer[N];
-      // todo: trovare un nome per nominare i file provvisori
+    // todo: trovare un nome per nominare i file provvisori
     std::string file_path(tempFilePath());
 
     // apro il file
@@ -262,6 +285,20 @@ bool Socket::sendResp(std::string resp) {
     // se la dimensione letta è zero la socket è stata chiusa
     return (size_write!=0);
 }
+
+// se c'è qualcosa da leggere nella socket la FD_ISSET ritornerà true
+bool Socket::sockReadIsReady() {
+    fd_set read_fds;
+    FD_ZERO(&read_fds);
+    if(this->socket_fd < 0)
+        return "";
+    FD_SET(this->socket_fd, &read_fds);
+    struct timeval timeout;
+    timeout.tv_sec = 0;
+    if(select(this->socket_fd, &read_fds, nullptr, nullptr, &timeout)<0)
+        // select error: ritorno una stringa vuota così fallirà il checksum, oppure lancio un'eccezione?
+        throw std::runtime_error("Select error");
+    return (FD_ISSET(this->socket_fd, &read_fds));}
 
 
 

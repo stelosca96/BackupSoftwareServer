@@ -16,7 +16,7 @@ private:
     //todo: mettere una dimensione del buffer ragionevole
     const static int N = 10240;
     int socket_fd;
-    const static int timeout_value = 20;
+    const static int timeout_value = 5;
 
     std::string username;
     Socket(int sockfd);
@@ -41,8 +41,8 @@ public:
     void connectToServer(std::string address, int port);
     void closeConnection() const;
     bool sendFile(const std::shared_ptr<SyncedFileServer>& syncedFile);
-    std::optional<std::string> readJSON();
-    std::optional<std::string> getFile(int size);
+    std::string readJSON();
+    std::optional<std::string> getFile(unsigned long size);
     void fileError();
 
     [[nodiscard]] const std::string &getUsername() const;
@@ -56,6 +56,8 @@ public:
     std::optional<std::string> getResp();
 
     bool sendJSON(const std::string& JSON);
+
+    bool sockReadIsReady();
 };
 
 

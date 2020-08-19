@@ -12,11 +12,14 @@ std::shared_ptr<Socket> Jobs::get() {
     if(queue.empty())
         return nullptr;
     std::shared_ptr<Socket> socket = queue.front();
-//    while(!socket.select()) {
-//        queue.pop();
-//        queue.push(socket);
-//        socket = queue.front();
-//    }
+
+    // fino a quando una socket non è pronta a ricevere dati estraggo e reinserisco la socket dalla lista
+    // todo: busy waiting, è corretto?
+    while(!socket->sockReadIsReady()) {
+        queue.pop();
+        queue.push(socket);
+        socket = queue.front();
+    }
     queue.pop();
     std::cout << "Queue size: " << queue.size() << std::endl;
     cv_put.notify_one();
