@@ -23,10 +23,10 @@ private:
     ssize_t read(char *buffer, size_t len) const;
     ssize_t write(const char *buffer, size_t len) const;
     void connect(struct sockaddr_in *addr, unsigned int len) const;
-    bool setReadSelect(fd_set &read_fds);
-    bool setWriteSelect(fd_set &write_fds);
-
-    bool sendResp(std::string resp);
+    void sendString(const std::string &str);
+    static int Select(int max_fd, fd_set *read_set, fd_set *write_set, fd_set *except_set, struct timeval *timeout);
+    void setSelect(fd_set &fdSet, timeval &timeout);
+    static std::string tempFilePath();
 
     friend class ServerSocket; //è friend perché voglio poter chiamare il suo costruttore privato
 
@@ -41,23 +41,24 @@ public:
     void connectToServer(std::string address, int port);
     void closeConnection() const;
     bool sendFile(const std::shared_ptr<SyncedFileServer>& syncedFile);
-    std::string readJSON();
-    std::optional<std::string> getFile(unsigned long size);
+    std::string getJSON();
+    std::string getFile(unsigned long size);
     void fileError();
 
     [[nodiscard]] const std::string &getUsername() const;
     void setUsername(std::string username);
 
-    static std::string tempFilePath();
 
-    bool sendOKResp();
-    bool sendKOResp();
-    bool sendNOResp();
-    std::optional<std::string> getResp();
+    void sendOKResp();
+    void sendKOResp();
+    void sendNOResp();
+    std::string getResp();
 
-    bool sendJSON(const std::string& JSON);
+    void sendJSON(const std::string& JSON);
 
     bool sockReadIsReady();
+
+
 };
 
 

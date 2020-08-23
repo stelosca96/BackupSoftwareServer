@@ -70,22 +70,27 @@ void worker(){
                     return;
                 }
             } else {
-                std::string JSON = sock->readJSON();
-                std::shared_ptr<SyncedFileServer> sfp = std::make_shared<SyncedFileServer>(JSON);
-                switch (sfp->getFileStatus()){
-                    case FileStatus::created:
-                        requestFile(sfp, sock);
-                        break;
-                    case FileStatus::modified:
-                        requestFile(sfp, sock);
-                        break;
-                    case FileStatus::erased:
-                        deleteFile(sfp, sock);
-                        break;
-                    case FileStatus::not_valid:
-                        // todo: fare qualcosa o ignorare o boh
-                        break;
+                std::optional<std::string> JSON = sock->getJSON();
+                if(JSON.has_value()){
+                    std::shared_ptr<SyncedFileServer> sfp = std::make_shared<SyncedFileServer>(JSON.value());
+                    switch (sfp->getFileStatus()){
+                        case FileStatus::created:
+                            requestFile(sfp, sock);
+                            break;
+                        case FileStatus::modified:
+                            requestFile(sfp, sock);
+                            break;
+                        case FileStatus::erased:
+                            deleteFile(sfp, sock);
+                            break;
+                        case FileStatus::not_valid:
+                            // todo: fare qualcosa o ignorare o boh
+                            break;
+                    }
+                } else{
+                    //todo: gestire problema
                 }
+
                 jobs.put(sock);
             }
         }
@@ -104,37 +109,50 @@ bool auth(const User& user){
     }
     return map_user->second.getPassword() == user.getPassword();
 }
-
+void test_recv(){
+    ServerSocket serverSocket(6019, backlog);
+    struct sockaddr addr;
+    socklen_t len;
+    Socket s = serverSocket.accept(&addr, &len);
+    std::string path = s.getFile(16);
+    std::cout << "PATH: " << path << std::endl;
+    std::cout << "HASH: " << SyncedFileServer::CalcSha256(path) << std::endl;
+    s.sendOKResp();
+}
 int main() {
-    ServerSocket serverSocket(6016, backlog);
-    std::vector<std::thread> threads;
-    threads.reserve(max_thread);
-    for(int i=0; i<max_thread; i++)
-        threads.emplace_back(std::thread(worker));
-    while (true) {
-        try {
-            struct sockaddr addr;
-            socklen_t len;
-            Socket s = serverSocket.accept(&addr, &len);
-            // todo: testare select
-            // todo: questo rallenta l'aggiunta di connessioni, un solo thread si occcupa di gestire l'auth, con i giusti timeout penso sia accettabile
-            // todo: gestire eccezioni
-            std::string u(s.readJSON());
-            User user(u);
-            // todo: se avanza tempo si potrebbe usare diffie - hellman per scambiare chiavi e avere un canale sicuro
-            std::cout << "username: " << user.getUsername() << std::endl;
-
-            // se le credenziali sono valide lo aggiungo alla coda dei jobs,
-            // altrimenti la connessione verrà chiusa poichè la socket sarà distrutta
-            if(auth(user)){
-                s.setUsername(user.getUsername());
-                std::shared_ptr<Socket> ptr = std::make_shared<Socket>(std::move(s));
-                jobs.put(ptr);
-            }
-        }
-        catch (std::runtime_error &error) {
-            // todo: gestire errore
-            std::cout << error.what() << std::endl;
-        }
-    }
+    test_recv();
+//    ServerSocket serverSocket(6016, backlog);
+//    std::vector<std::thread> threads;
+//    threads.reserve(max_thread);
+//    for(int i=0; i<max_thread; i++)
+//        threads.emplace_back(std::thread(worker));
+//    while (true) {
+//        try {
+//            struct sockaddr addr;
+//            socklen_t len;
+//            Socket s = serverSocket.accept(&addr, &len);
+//            // todo: testare select
+//            // todo: questo rallenta l'aggiunta di connessioni, un solo thread si occcupa di gestire l'auth, con i giusti timeout penso sia accettabile
+//            // todo: gestire eccezioni
+//            std::optional<std::string> json = s.getJSON();
+//            if(json.has_value()){
+//                std::string u(json.value());
+//                User user(u);
+//                // todo: se avanza tempo si potrebbe usare diffie - hellman per scambiare chiavi e avere un canale sicuro
+//                std::cout << "username: " << user.getUsername() << std::endl;
+//
+//                // se le credenziali sono valide lo aggiungo alla coda dei jobs,
+//                // altrimenti la connessione verrà chiusa poichè la socket sarà distrutta
+//                if(auth(user)){
+//                    s.setUsername(user.getUsername());
+//                    std::shared_ptr<Socket> ptr = std::make_shared<Socket>(std::move(s));
+//                    jobs.put(ptr);
+//                }
+//            }
+//        }
+//        catch (std::runtime_error &error) {
+//            // todo: gestire errore
+//            std::cout << error.what() << std::endl;
+//        }
+//    }
 }
