@@ -127,7 +127,7 @@ void Socket::sendString(const std::string& str){
     }
 }
 
-bool Socket::sendFile(const std::shared_ptr<SyncedFileServer>& syncedFile) {
+void Socket::sendFile(const std::shared_ptr<SyncedFileServer>& syncedFile) {
     char buffer[N];
     fd_set write_fs;
     ssize_t size_read = 0;
@@ -164,11 +164,11 @@ bool Socket::sendFile(const std::shared_ptr<SyncedFileServer>& syncedFile) {
                 timeout.tv_sec = Socket::timeout_value;
                 if( (k = this->Select(FD_SETSIZE, nullptr, &write_fs, nullptr, &timeout))<0){
                     std::cout << "Errore select" << std::endl;
-                    return false;
+                    throw socketException("Select error");
                 }
                 if(k<1 || !FD_ISSET(this->socket_fd, &write_fs)){
                     std::cout << "Timeout scaduto" << std::endl;
-                    return false;
+                    throw socketException("Elapsed timeout");
                 }
                 std::cout << "Invio file" << std::endl;
 
@@ -179,7 +179,7 @@ bool Socket::sendFile(const std::shared_ptr<SyncedFileServer>& syncedFile) {
                         continue; /* and call send() again */
                     }
                     else
-                        return false;
+                        throw socketException("Remote socket closed");
                 }
                 size_left -= size_written;
                 ptr += size_written;
@@ -190,7 +190,6 @@ bool Socket::sendFile(const std::shared_ptr<SyncedFileServer>& syncedFile) {
         std::cout << "File chiuso" << std::endl;
         file_to_send.close();
     }
-    return true;
 }
 
 std::string Socket::getJSON() {

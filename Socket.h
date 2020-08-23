@@ -40,7 +40,7 @@ public:
     Socket &operator=(Socket &&other) noexcept ; // costruttore di copia per movimento
     void connectToServer(std::string address, int port);
     void closeConnection() const;
-    bool sendFile(const std::shared_ptr<SyncedFileServer>& syncedFile);
+    void sendFile(const std::shared_ptr<SyncedFileServer>& syncedFile);
     std::string getJSON();
     std::string getFile(unsigned long size);
     void fileError();
