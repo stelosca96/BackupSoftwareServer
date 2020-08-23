@@ -354,19 +354,35 @@ std::string Socket::getResp() {
     return value;
 }
 
+void Socket::clearReadBuffer(){
+    char buffer[N];
+    while (sockReadIsReady()){
+        ssize_t res = recv(socket_fd, buffer, N, MSG_NOSIGNAL);
+        buffer[res] = '\0';
+        std::cout << "CLEAR:$" << buffer << "$"<< std::endl;
+        if(res<=0)
+            return;
+    }
+}
+
 // se c'è qualcosa da leggere nella socket la FD_ISSET ritornerà true
 bool Socket::sockReadIsReady() {
     fd_set read_fds;
-    FD_ZERO(&read_fds);
-    if(this->socket_fd < 0)
-        return false;
-    FD_SET(this->socket_fd, &read_fds);
     struct timeval timeout;
+    int k;
+    this->setSelect(read_fds, timeout);
+    timeout.tv_usec = 0;
     timeout.tv_sec = 0;
-    if(select(this->socket_fd, &read_fds, nullptr, nullptr, &timeout)<0)
-        // select error: ritorno una stringa vuota così fallirà il checksum, oppure lancio un'eccezione?
-        throw std::runtime_error("Select error");
-    return (FD_ISSET(this->socket_fd, &read_fds));}
+    if( (k = this->Select(FD_SETSIZE, &read_fds, nullptr, nullptr, &timeout))<0){
+        std::cout << "Errore select" << std::endl;
+        throw socketException("Select error");
+    }
+    if(k<1 || !FD_ISSET(this->socket_fd, &read_fds)){
+        return false;
+    }
+    std::cout << "Sock is ready" << std::endl;
+    return true;
+}
 
 
 

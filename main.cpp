@@ -11,6 +11,8 @@
 #include "exceptions/filesystemException.h"
 #include <filesystem>
 #include <fstream>
+#include <boost/property_tree/exceptions.hpp>
+#include <boost/property_tree/json_parser/error.hpp>
 
 static const int max_thread = 10;
 static const int backlog = 10;
@@ -60,7 +62,7 @@ void requestFile(const std::shared_ptr<SyncedFileServer>& sfp, const std::shared
         }
         // altrimenti comunico il problema al client che gestirà l'errore
         else {
-            std::cout << "FILE KO" << std::endl;
+            std::cout << "FILE K0(" << temp_path<< "): hash errato(" << SyncedFileServer::CalcSha256(temp_path) << ')' << std::endl;
             sock->sendKOResp();
         }
     }
@@ -80,6 +82,7 @@ void worker(){
         } else {
             try {
                 std::string JSON = sock->getJSON();
+                sock->clearReadBuffer();
                 std::shared_ptr<SyncedFileServer> sfp = std::make_shared<SyncedFileServer>(JSON);
                 switch (sfp->getFileStatus()){
                     case FileStatus::created:
@@ -92,7 +95,7 @@ void worker(){
                         deleteFile(sfp, sock);
                         break;
                     case FileStatus::not_valid:
-                        // todo: fare qualcosa o ignorare o boh
+                        sock->sendKOResp();
                         break;
                 }
                 jobs.put(sock);
@@ -103,6 +106,17 @@ void worker(){
                 // loggo l'errore e riaggiungo la connessione alla lista dei jobs dopo avere mandato un KO al client
                 std::cout << exception.what() << std::endl;
                 sock->sendKOResp();
+                sock->clearReadBuffer();
+                jobs.put(sock);
+            } catch (boost::wrapexcept<boost::property_tree::ptree_bad_path> &e1 ) {
+                std::cout << e1.what() << std::endl;
+                sock->sendKOResp();
+                sock->clearReadBuffer();
+                jobs.put(sock);
+            } catch (boost::wrapexcept<boost::property_tree::json_parser::json_parser_error> &e2) {
+                std::cout << e2.what() << std::endl;
+                sock->sendKOResp();
+                sock->clearReadBuffer();
                 jobs.put(sock);
             }
         }
@@ -135,6 +149,7 @@ void loadUsers(){
 }
 
 void saveUsername(const User& user){
+    // il salvataggio degli utenti è gestito solo dal thread principale quindi non ho bisogno di sincronizzazione
     std::cout << "Save user" << std::endl;
     // todo: gestire eccezione
     std::ofstream outfile;
@@ -179,7 +194,7 @@ int main() {
         std::cout << exception.what() << std::endl;
     }
     try {
-        ServerSocket serverSocket(6017, backlog);
+        ServerSocket serverSocket(6020, backlog);
         std::vector<std::thread> threads;
         threads.reserve(max_thread);
         for(int i=0; i<max_thread; i++)
@@ -200,9 +215,10 @@ int main() {
                 // altrimenti la connessione verrà chiusa poichè la socket sarà distrutta
                 if(auth(user)){
                     s.setUsername(user.getUsername());
+                    s.sendOKResp();
                     std::shared_ptr<Socket> ptr = std::make_shared<Socket>(std::move(s));
                     jobs.put(ptr);
-                }
+                } else s.sendKOResp();
             } catch (socketException &exception) {
                 // se si verifica una socket exception non la aggiungo alla lista dei jobs, così che venga chiusa
                 std::cout << exception.what() << std::endl;

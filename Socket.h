@@ -59,6 +59,7 @@ public:
     bool sockReadIsReady();
 
 
+    void clearReadBuffer();
 };
 
 

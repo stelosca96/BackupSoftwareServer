@@ -16,12 +16,13 @@ namespace pt = boost::property_tree;
 static const int K_READ_BUF_SIZE{ 1024 * 16 };
 
 SyncedFileServer::SyncedFileServer(const std::string& JSON){
+    std::cout << JSON << std::endl;
+
     // todo: gestire eccezioni
     std::stringstream ss(JSON);
 
     boost::property_tree::ptree root;
     boost::property_tree::read_json(ss, root);
-
     this->hash = root.get_child("hash").data();
 
     // If no conversion could be performed, an invalid_argument exception is thrown.
@@ -30,8 +31,7 @@ SyncedFileServer::SyncedFileServer(const std::string& JSON){
     // If no conversion could be performed, an invalid_argument exception is thrown.
     this->fileStatus = static_cast<FileStatus>(std::stoi(root.get_child("file_status").data()));
 
-    // If no conversion could be performed, an invalid_argument exception is thrown.
-    this->is_file = std::stoi(root.get_child("is_file").data());
+    this->is_file = root.get_child("is_file").data()=="true";
 }
 
 void SyncedFileServer::update_file_data() {
