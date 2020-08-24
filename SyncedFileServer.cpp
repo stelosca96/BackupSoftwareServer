@@ -6,17 +6,15 @@
 #include <iomanip>
 #include <utility>
 #include "SyncedFileServer.h"
-#include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include <filesystem>
 #include <iostream>
-
 namespace pt = boost::property_tree;
 
 static const int K_READ_BUF_SIZE{ 1024 * 16 };
 
 SyncedFileServer::SyncedFileServer(const std::string& JSON){
-    std::cout << JSON << std::endl;
+//    std::cout << JSON << std::endl;
 
     // todo: gestire eccezioni
     std::stringstream ss(JSON);
@@ -24,6 +22,8 @@ SyncedFileServer::SyncedFileServer(const std::string& JSON){
     boost::property_tree::ptree root;
     boost::property_tree::read_json(ss, root);
     this->hash = root.get_child("hash").data();
+
+    this->path = root.get_child("path").data();
 
     // If no conversion could be performed, an invalid_argument exception is thrown.
     this->file_size = std::stoul(root.get_child("file_size").data());
@@ -119,7 +119,7 @@ void SyncedFileServer::setSyncing(bool syncing) {
     SyncedFileServer::is_syncing = syncing;
 }
 
-std::string SyncedFileServer::getJSON() {
+pt::ptree SyncedFileServer::getPtree(){
     pt::ptree root;
     root.put("path", this->path);
 
@@ -129,9 +129,11 @@ std::string SyncedFileServer::getJSON() {
     root.put("file_size", this->file_size);
     root.put("file_status", static_cast<int>(this->fileStatus));
     root.put("is_file", this->is_file);
+    return root;
+}
 
-    //todo: nel json posso aggiungere anche informazioni per l'autenticazione
-
+std::string SyncedFileServer::getJSON() {
+    pt::ptree root = this->getPtree();
     std::stringstream ss;
     pt::json_parser::write_json(ss, root);
     std::cout << ss.str() << std::endl;

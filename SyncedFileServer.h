@@ -8,6 +8,7 @@
 
 #include <string>
 #include <optional>
+#include <boost/property_tree/ptree.hpp>
 
 enum class FileStatus {created, modified, erased, not_valid};
 
@@ -54,6 +55,7 @@ public:
     void setSyncing(bool syncing);
     std::string getJSON();
 
+    boost::property_tree::basic_ptree<std::string, std::string> getPtree();
 };
 
 

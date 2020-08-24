@@ -32,13 +32,14 @@ Socket::~Socket() {
     }
 }
 
-Socket::Socket(Socket &&other) noexcept : socket_fd(other.socket_fd){  // costruttore di movimento
+Socket::Socket(Socket &&other) noexcept : socket_fd(other.socket_fd), username(other.username){  // costruttore di movimento
     other.socket_fd = 0;
 }
 
 Socket& Socket::operator=(Socket &&other) noexcept {   // costruttore di copia per movimento
     if(socket_fd != 0) close(socket_fd);
     socket_fd = other.socket_fd;
+    username = other.username;
     other.socket_fd = 0;
     return *this;
 }

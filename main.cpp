@@ -1,6 +1,5 @@
 #include <iostream>
 #include <unordered_map>
-#include <memory>
 #include <thread>
 #include "SyncedFileServer.h"
 #include "Jobs.h"
@@ -13,29 +12,77 @@
 #include <fstream>
 #include <boost/property_tree/exceptions.hpp>
 #include <boost/property_tree/json_parser/error.hpp>
+#include <shared_mutex>
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/json_parser.hpp>
+
+namespace pt = boost::property_tree;
 
 static const int max_thread = 10;
 static const int backlog = 10;
 
 std::mutex mutex;
-std::mutex mutex_map;
+std::shared_mutex mutex_map;
 std::mutex mutex_mex;
 
-std::unordered_map<std::string, std::shared_ptr<SyncedFileServer>> synced_files;
+std::unordered_map<std::string, std::shared_ptr<std::unordered_map<std::string, std::shared_ptr<SyncedFileServer>>>> synced_files;
 std::unordered_map<std::string, User> users;
 
 Jobs jobs(max_thread * 10);
 
-std::string getUserPath(const std::shared_ptr<Socket>& socket, std::string path){
-    std::filesystem::path p(socket->getUsername());
-    p.append(path);
-    std::cout << path << std::endl;
-    return p;
+void create_empty_map(const std::string& username){
+    std::unordered_map<std::string, std::shared_ptr<SyncedFileServer>> user_map;
+    std::unique_lock lock(mutex_map);
+    synced_files[username] = std::make_shared<std::unordered_map<std::string, std::shared_ptr<SyncedFileServer>>>(std::move(user_map));
+}
+
+void saveMap(const std::string& username){
+    // todo: gestire eccezioni
+    pt::ptree pt;
+    std::shared_lock map_lock(mutex_map);
+    auto user_map = synced_files.find(username)->second;
+    map_lock.unlock();
+    for(auto const& [key, val] : (*user_map)){
+        std::cout << val->getPath() << std::endl;
+        pt.push_back(std::make_pair(key, val->getPtree()));
+    }
+    pt::json_parser::write_json("synced_maps/" + username + ".json", pt);
+}
+
+void loadMap(const std::string& username){
+    std::shared_lock lock(mutex_map);
+    auto user_map = synced_files.find(username)->second;
+    lock.unlock();
+    // todo: gestire eccezioni
+    pt::ptree root;
+    pt::read_json("synced_maps/" + username + ".json", root);
+    std::cout << "File loaded for " << username << ':' << std::endl;
+    for(const auto& p: root){
+        std::stringstream ss;
+        pt::json_parser::write_json(ss, p.second);
+        (*user_map)[p.first] = std::make_shared<SyncedFileServer>(ss.str());
+        std::cout << p.first << std::endl;
+    }
+}
+
+void loadMaps(){
+    std::filesystem::create_directory("synced_maps");
+    for(auto const& [key, val] : users){
+        create_empty_map(key);
+        try {
+            loadMap(key);
+        } catch (std::runtime_error &error) {
+            std::cout << error.what() << std::endl;
+        }
+    }
 }
 
 void deleteFile(const std::shared_ptr<SyncedFileServer>& sfp, const std::shared_ptr<Socket>& sock){
     if(synced_files.find(sfp->getPath())!=synced_files.end()){
-        synced_files.erase(getUserPath(sock, sfp->getPath()));
+        std::shared_lock map_lock(mutex_map);
+        auto user_map = synced_files.find(sock->getUsername())->second;
+        map_lock.unlock();
+        user_map->erase(sfp->getPath());
     }
     sock->sendOKResp();
     std::cout << "FILE OK" << std::endl;
@@ -43,8 +90,13 @@ void deleteFile(const std::shared_ptr<SyncedFileServer>& sfp, const std::shared_
 
 // richiedo il file solo se non è già presente o è diverso
 void requestFile(const std::shared_ptr<SyncedFileServer>& sfp, const std::shared_ptr<Socket>& sock){
-    auto map_value = synced_files.find(getUserPath(sock, sfp->getPath()));
-    if(map_value == synced_files.end() || map_value->second->getHash() != sfp->getHash()){
+    // ogni thread lavora solo in lettura sulla mappa totale e lettura e scrittura sulle figlie => implementare lock
+    // todo: durante la registrazione deve essere creata una mappa per ogni utente (scrittura thread principale/lettura gli altri) quindi usare il lock opportuno
+    std::shared_lock map_lock(mutex_map);
+    auto user_map = synced_files.find(sock->getUsername())->second;
+    map_lock.unlock();
+    auto map_value = user_map->find(sfp->getPath());
+    if(map_value == user_map->end() || map_value->second->getHash() != sfp->getHash()){
         // chiedo al client di mandarmi il file perchè non è presente
         sock->sendNOResp();
         std::cout << "FILE NO" << std::endl;
@@ -54,15 +106,16 @@ void requestFile(const std::shared_ptr<SyncedFileServer>& sfp, const std::shared
 
         // controllo che il file ricevuto sia quello che mi aspettavo e che non ci siano stati errori
         if(SyncedFileServer::CalcSha256(temp_path) == sfp->getHash()){
-            std::cout << "FILE OK" << std::endl;
+            std::cout << "FILE OK (" << temp_path << " - " << sfp->getHash() << ')' << std::endl;
             // todo: copio il file nel direttorio opportuno
             // aggiorno il valore della mappa
-            synced_files[getUserPath(sock, sfp->getPath())] = sfp;
+            (*user_map)[sfp->getPath()] = sfp;
             sock->sendOKResp();
         }
         // altrimenti comunico il problema al client che gestirà l'errore
         else {
             std::cout << "FILE K0(" << temp_path<< "): hash errato(" << SyncedFileServer::CalcSha256(temp_path) << ')' << std::endl;
+            // todo: elimino il file
             sock->sendKOResp();
         }
     }
@@ -82,7 +135,6 @@ void worker(){
         } else {
             try {
                 std::string JSON = sock->getJSON();
-                sock->clearReadBuffer();
                 std::shared_ptr<SyncedFileServer> sfp = std::make_shared<SyncedFileServer>(JSON);
                 switch (sfp->getFileStatus()){
                     case FileStatus::created:
@@ -98,6 +150,7 @@ void worker(){
                         sock->sendKOResp();
                         break;
                 }
+                saveMap(sock->getUsername());
                 jobs.put(sock);
             } catch (socketException &exception) {
                 // scrivo l'errore e chiudo la socket
@@ -135,9 +188,6 @@ void worker(){
 //    s.sendOKResp();
 //}
 
-void loadMaps(){
-
-}
 void loadUsers(){
     std::cout << "Load users" << std::endl;
     std::ifstream infile("users_list.conf");
@@ -158,9 +208,8 @@ void saveUsername(const User& user){
     outfile.close();
 }
 
-void saveMap(std::string username){
 
-}
+
 
 bool auth(const User& user){
     auto map_user = users.find(user.getUsername());
@@ -168,12 +217,17 @@ bool auth(const User& user){
         // l'username deve essere lungo almeno 3 caratteri
         if(user.getUsername().length()<3)
             return false;
+        // l'username non deve contenere spazi o / o \ e valutare altri caratteri speciali
+        for(char i : user.getUsername())
+            if(i==' ' || i=='/' || i=='\\')
+                return false;
         // la password non deve contenere spazi
         for(char i : user.getPassword())
             if(i==' ')
                 return false;
         const std::string& username = user.getUsername();
         users[username] = user;
+        create_empty_map(username);
         saveUsername(user);
         return true;
     }
@@ -183,18 +237,19 @@ bool auth(const User& user){
 int main() {
     try {
         loadUsers();
+        try {
+            loadMaps();
+        } catch (filesystemException &exception) {
+            // todo: se si verifica un errore durante la lettura devo partire da una mappa vuota e aprire un nuovo file
+            std::cout << exception.what() << std::endl;
+        }
     } catch (filesystemException &exception) {
         // todo: se si verifica un errore durante la lettura devo partire da una mappa vuota e aprire un nuovo file
         std::cout << exception.what() << std::endl;
     }
+
     try {
-        loadMaps();
-    } catch (filesystemException &exception) {
-        // todo: se si verifica un errore durante la lettura devo partire da una mappa vuota e aprire un nuovo file
-        std::cout << exception.what() << std::endl;
-    }
-    try {
-        ServerSocket serverSocket(6020, backlog);
+        ServerSocket serverSocket(6028, backlog);
         std::vector<std::thread> threads;
         threads.reserve(max_thread);
         for(int i=0; i<max_thread; i++)
