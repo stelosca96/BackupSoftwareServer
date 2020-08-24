@@ -15,6 +15,7 @@
 #include <fstream>
 #include <utility>
 #define INTERRUPTED_BY_SIGNAL (errno == EINTR)
+// todo: valutare se utile https://www.codeproject.com/Articles/1264257/Socket-Programming-in-Cplusplus-using-boost-asio-T
 
 Socket::Socket(int sock_fd) : socket_fd(sock_fd) {
     std::cout << "Socket " << sock_fd << " created" << std::endl;
