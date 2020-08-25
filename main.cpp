@@ -30,6 +30,16 @@ std::unordered_map<std::string, User> users;
 
 Jobs jobs(max_thread * 10);
 
+void moveFile(const std::string& username, const std::shared_ptr<SyncedFileServer>& sfp, const std::string& tempPath){
+    std::filesystem::path user_path("./users_files/");
+    user_path += username;
+    std::filesystem::path path(sfp->getPath());
+    user_path += path;
+    std::filesystem::create_directories(user_path.parent_path());
+    std::filesystem::copy_file(tempPath, user_path);
+    std::cout << user_path.parent_path() << std::endl;
+}
+
 void create_empty_map(const std::string& username){
     std::unordered_map<std::string, std::shared_ptr<SyncedFileServer>> user_map;
     std::unique_lock lock(mutex_map);
@@ -43,7 +53,7 @@ void saveMap(const std::string& username){
     auto user_map = synced_files.find(username)->second;
     map_lock.unlock();
     for(auto const& [key, val] : (*user_map)){
-        std::cout << val->getPath() << std::endl;
+//        std::cout << val->getPath() << std::endl;
         pt.push_back(std::make_pair(key, val->getPtree()));
     }
     pt::json_parser::write_json("synced_maps/" + username + ".json", pt);
@@ -56,12 +66,12 @@ void loadMap(const std::string& username){
     // todo: gestire eccezioni
     pt::ptree root;
     pt::read_json("synced_maps/" + username + ".json", root);
-    std::cout << "File loaded for " << username << ':' << std::endl;
+//    std::cout << "File loaded for " << username << ':' << std::endl;
     for(const auto& p: root){
         std::stringstream ss;
         pt::json_parser::write_json(ss, p.second);
         (*user_map)[p.first] = std::make_shared<SyncedFileServer>(ss.str());
-        std::cout << p.first << std::endl;
+//        std::cout << p.first << std::endl;
     }
 }
 
@@ -92,12 +102,17 @@ void deleteFile(const std::shared_ptr<SyncedFileServer>& sfp, const std::shared_
 void requestFile(const std::shared_ptr<SyncedFileServer>& sfp, const std::shared_ptr<Socket>& sock){
     // ogni thread lavora solo in lettura sulla mappa totale e lettura e scrittura sulle figlie => implementare lock
     // todo: durante la registrazione deve essere creata una mappa per ogni utente (scrittura thread principale/lettura gli altri) quindi usare il lock opportuno
+    std::cout << "Attendo lock" << std::endl;
     std::shared_lock map_lock(mutex_map);
+    std::cout << "lock preso" << std::endl;
     auto user_map = synced_files.find(sock->getUsername())->second;
     map_lock.unlock();
+    std::cout << "lock rilasciato" << std::endl;
     auto map_value = user_map->find(sfp->getPath());
     if(map_value == user_map->end() || map_value->second->getHash() != sfp->getHash()){
         // chiedo al client di mandarmi il file perchè non è presente
+        std::cout << "sendo un no" << std::endl;
+
         sock->sendNOResp();
         std::cout << "FILE NO" << std::endl;
 
@@ -106,18 +121,27 @@ void requestFile(const std::shared_ptr<SyncedFileServer>& sfp, const std::shared
 
         // controllo che il file ricevuto sia quello che mi aspettavo e che non ci siano stati errori
         if(SyncedFileServer::CalcSha256(temp_path) == sfp->getHash()){
+            std::cout << "sendo un ok" << std::endl;
+
             std::cout << "FILE OK (" << temp_path << " - " << sfp->getHash() << ')' << std::endl;
-            // todo: copio il file nel direttorio opportuno
+            // todo: gestire eccezioni della moveFile => ko in caso di errore
+            moveFile(sock->getUsername(), sfp, temp_path);
             // aggiorno il valore della mappa
             (*user_map)[sfp->getPath()] = sfp;
             sock->sendOKResp();
         }
         // altrimenti comunico il problema al client che gestirà l'errore
         else {
+            std::cout << "sendo un ko" << std::endl;
+
             std::cout << "FILE K0(" << temp_path<< "): hash errato(" << SyncedFileServer::CalcSha256(temp_path) << ')' << std::endl;
             // todo: elimino il file
+            std::filesystem::remove(temp_path);
             sock->sendKOResp();
         }
+    }else {
+        // il file è già presente quindi devo solo mandare un OK
+        sock->sendOKResp();
     }
 }
 
@@ -135,18 +159,23 @@ void worker(){
         } else {
             try {
                 std::string JSON = sock->getJSON();
+                std::cout << JSON << std::endl;
                 std::shared_ptr<SyncedFileServer> sfp = std::make_shared<SyncedFileServer>(JSON);
                 switch (sfp->getFileStatus()){
                     case FileStatus::created:
+                        std::cout << "created" << std::endl;
                         requestFile(sfp, sock);
                         break;
                     case FileStatus::modified:
+                        std::cout << "modified" << std::endl;
                         requestFile(sfp, sock);
                         break;
                     case FileStatus::erased:
+                        std::cout << "erased" << std::endl;
                         deleteFile(sfp, sock);
                         break;
                     case FileStatus::not_valid:
+                        std::cout << "not valid" << std::endl;
                         sock->sendKOResp();
                         break;
                 }
@@ -155,38 +184,27 @@ void worker(){
             } catch (socketException &exception) {
                 // scrivo l'errore e chiudo la socket
                 std::cout << exception.what() << std::endl;
-            } catch (dataException &exception) {
+            } catch (std::runtime_error &exception) {
                 // loggo l'errore e riaggiungo la connessione alla lista dei jobs dopo avere mandato un KO al client
                 std::cout << exception.what() << std::endl;
                 sock->sendKOResp();
                 sock->clearReadBuffer();
                 jobs.put(sock);
-            } catch (boost::wrapexcept<boost::property_tree::ptree_bad_path> &e1 ) {
-                std::cout << e1.what() << std::endl;
-                sock->sendKOResp();
-                sock->clearReadBuffer();
-                jobs.put(sock);
-            } catch (boost::wrapexcept<boost::property_tree::json_parser::json_parser_error> &e2) {
-                std::cout << e2.what() << std::endl;
-                sock->sendKOResp();
-                sock->clearReadBuffer();
-                jobs.put(sock);
             }
+//            catch (boost::wrapexcept<boost::property_tree::ptree_bad_path> &e1 ) {
+//                std::cout << e1.what() << std::endl;
+//                sock->sendKOResp();
+//                sock->clearReadBuffer();
+//                jobs.put(sock);
+//            } catch (boost::wrapexcept<boost::property_tree::json_parser::json_parser_error> &e2) {
+//                std::cout << e2.what() << std::endl;
+//                sock->sendKOResp();
+//                sock->clearReadBuffer();
+//                jobs.put(sock);
+//            }
         }
     }
 }
-
-
-//void test_recv(){
-//    ServerSocket serverSocket(6019, backlog);
-//    struct sockaddr addr;
-//    socklen_t len;
-//    Socket s = serverSocket.accept(&addr, &len);
-//    std::string path = s.getFile(16);
-//    std::cout << "PATH: " << path << std::endl;
-//    std::cout << "HASH: " << SyncedFileServer::CalcSha256(path) << std::endl;
-//    s.sendOKResp();
-//}
 
 void loadUsers(){
     std::cout << "Load users" << std::endl;
@@ -207,9 +225,6 @@ void saveUsername(const User& user){
     outfile << user.getUsername() << ' ' << user.getPassword() << std::endl;
     outfile.close();
 }
-
-
-
 
 bool auth(const User& user){
     auto map_user = users.find(user.getUsername());
@@ -249,7 +264,7 @@ int main() {
     }
 
     try {
-        ServerSocket serverSocket(6028, backlog);
+        ServerSocket serverSocket(6031, backlog);
         std::vector<std::thread> threads;
         threads.reserve(max_thread);
         for(int i=0; i<max_thread; i++)
