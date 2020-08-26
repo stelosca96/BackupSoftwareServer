@@ -37,6 +37,7 @@ void moveFile(const std::string& username, const std::shared_ptr<SyncedFileServe
     user_path += path;
     std::filesystem::create_directories(user_path.parent_path());
     std::filesystem::copy_file(tempPath, user_path);
+    std::filesystem::remove(tempPath);
     std::cout << user_path.parent_path() << std::endl;
 }
 
@@ -100,8 +101,8 @@ void deleteFile(const std::shared_ptr<SyncedFileServer>& sfp, const std::shared_
 
 // richiedo il file solo se non è già presente o è diverso
 void requestFile(const std::shared_ptr<SyncedFileServer>& sfp, const std::shared_ptr<Socket>& sock){
-    // ogni thread lavora solo in lettura sulla mappa totale e lettura e scrittura sulle figlie => implementare lock
-    // todo: durante la registrazione deve essere creata una mappa per ogni utente (scrittura thread principale/lettura gli altri) quindi usare il lock opportuno
+    // ogni thread lavora solo in lettura sulla mappa totale e lettura e scrittura sulle figlie => la mappa figlia è usata solo da un thread per volta
+    // todo: eliminare tutti i file in caso di eccezione
     std::cout << "Attendo lock" << std::endl;
     std::shared_lock map_lock(mutex_map);
     std::cout << "lock preso" << std::endl;
@@ -233,6 +234,7 @@ bool auth(const User& user){
         if(user.getUsername().length()<3)
             return false;
         // l'username non deve contenere spazi o / o \ e valutare altri caratteri speciali
+        // todo: non permettere nomi che contengano caratteri speciali non possibili su windows
         for(char i : user.getUsername())
             if(i==' ' || i=='/' || i=='\\')
                 return false;
@@ -240,6 +242,7 @@ bool auth(const User& user){
         for(char i : user.getPassword())
             if(i==' ')
                 return false;
+        // todo: controllare che non esista già una connessione per quell'utente
         const std::string& username = user.getUsername();
         users[username] = user;
         create_empty_map(username);
