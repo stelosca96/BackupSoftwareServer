@@ -242,6 +242,7 @@ void Socket::setSelect(fd_set& cset, struct timeval& timeout){
 // genero un nome temporaneo per il file dato da tempo corrente + id thread
 // todo: verificare che lo sha256 non sia diverso per il nome del file
 std::string Socket::tempFilePath(){
+    std::filesystem::create_directory("temp/");
     auto th_id = std::this_thread::get_id();
     std::time_t t = std::time(nullptr);   // get time now
     std::stringstream ss;

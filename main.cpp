@@ -36,9 +36,22 @@ void moveFile(const std::string& username, const std::shared_ptr<SyncedFileServe
     std::filesystem::path path(sfp->getPath());
     user_path += path;
     std::filesystem::create_directories(user_path.parent_path());
-    std::filesystem::copy_file(tempPath, user_path);
-    std::filesystem::remove(tempPath);
+    std::filesystem::copy_file(tempPath, user_path, std::filesystem::copy_options::overwrite_existing);
+    if(std::filesystem::is_directory(tempPath) || std::filesystem::is_regular_file(tempPath))
+        std::filesystem::remove(tempPath);
     std::cout << user_path.parent_path() << std::endl;
+}
+
+void deleteFile(const std::string& username, const std::shared_ptr<SyncedFileServer>& sfp){
+    std::filesystem::path user_path("./users_files/");
+    user_path += username;
+    std::filesystem::path path(sfp->getPath());
+    user_path += path;
+    std::cout << "oooo" << std::endl;
+
+    if(std::filesystem::is_directory(user_path) || std::filesystem::is_regular_file(user_path))
+        std::filesystem::remove(user_path);
+    std::cout << user_path << " erased" << std::endl;
 }
 
 void create_empty_map(const std::string& username){
@@ -89,12 +102,18 @@ void loadMaps(){
 }
 
 void deleteFile(const std::shared_ptr<SyncedFileServer>& sfp, const std::shared_ptr<Socket>& sock){
+    std::cout << "Qua" << std::endl;
+
     if(synced_files.find(sfp->getPath())!=synced_files.end()){
+        std::cout << "Quo" << std::endl;
+
         std::shared_lock map_lock(mutex_map);
         auto user_map = synced_files.find(sock->getUsername())->second;
         map_lock.unlock();
         user_map->erase(sfp->getPath());
     }
+    std::cout << "Qui" << std::endl;
+    deleteFile(sock->getUsername(), sfp);
     sock->sendOKResp();
     std::cout << "FILE OK" << std::endl;
 }
@@ -141,6 +160,8 @@ void requestFile(const std::shared_ptr<SyncedFileServer>& sfp, const std::shared
             sock->sendKOResp();
         }
     }else {
+        std::cout << "sendo un ok" << std::endl;
+
         // il file è già presente quindi devo solo mandare un OK
         sock->sendOKResp();
     }
@@ -188,8 +209,8 @@ void worker(){
             } catch (std::runtime_error &exception) {
                 // loggo l'errore e riaggiungo la connessione alla lista dei jobs dopo avere mandato un KO al client
                 std::cout << exception.what() << std::endl;
-                sock->sendKOResp();
                 sock->clearReadBuffer();
+                sock->sendKOResp();
                 jobs.put(sock);
             }
 //            catch (boost::wrapexcept<boost::property_tree::ptree_bad_path> &e1 ) {
@@ -267,7 +288,7 @@ int main() {
     }
 
     try {
-        ServerSocket serverSocket(6031, backlog);
+        ServerSocket serverSocket(6034, backlog);
         std::vector<std::thread> threads;
         threads.reserve(max_thread);
         for(int i=0; i<max_thread; i++)
