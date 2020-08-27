@@ -3,7 +3,6 @@
 #include <thread>
 #include "SyncedFileServer.h"
 #include "Jobs.h"
-#include "ServerSocket.h"
 #include "User.h"
 #include "exceptions/socketException.h"
 #include "exceptions/dataException.h"
@@ -15,8 +14,16 @@
 #include <shared_mutex>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
+#include <iostream>
+#include <boost/asio.hpp>
+
 
 namespace pt = boost::property_tree;
+using boost::asio::ip::tcp;
+
+//using boost::asio::ip::tcp;
+//namespace ssl = boost::asio::ssl;
+//typedef ssl::stream<tcp::socket> ssl_socket;
 
 static const int max_thread = 10;
 static const int backlog = 10;
@@ -150,7 +157,7 @@ void requestFile(const std::shared_ptr<SyncedFileServer>& sfp, const std::shared
             (*user_map)[sfp->getPath()] = sfp;
             sock->sendOKResp();
         }
-        // altrimenti comunico il problema al client che gestirà l'errore
+            // altrimenti comunico il problema al client che gestirà l'errore
         else {
             std::cout << "sendo un ko" << std::endl;
 
@@ -288,15 +295,20 @@ int main() {
     }
 
     try {
-        ServerSocket serverSocket(6034, backlog);
+        boost::asio::io_service io_service;
         std::vector<std::thread> threads;
         threads.reserve(max_thread);
         for(int i=0; i<max_thread; i++)
             threads.emplace_back(std::thread(worker));
         while (true) {
-            struct sockaddr addr;
-            socklen_t len;
-            Socket s = serverSocket.accept(&addr, &len);
+            //listen for new connection
+            tcp::acceptor acceptor_(io_service, tcp::endpoint(tcp::v4(), 8085));
+            //socket creation
+            tcp::socket socket_(io_service);
+            //waiting for connection
+            acceptor_.accept(socket_);
+
+            Socket s(socket_);
             // questo rallenta l'aggiunta di connessioni,
             // un solo thread si occcupa di gestire l'auth, ma con i giusti timeout penso sia accettabile
             try {
