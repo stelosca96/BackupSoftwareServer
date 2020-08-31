@@ -11,7 +11,6 @@
 #include "User.h"
 #include "Session.h"
 #include "SyncedFileServer.h"
-#include "Jobs.h"
 #include <shared_mutex>
 
 using boost::asio::ip::tcp;
