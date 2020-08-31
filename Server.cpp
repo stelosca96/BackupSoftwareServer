@@ -117,6 +117,7 @@ void Server::do_accept() {
 }
 
 void Server::do_handshake(const std::shared_ptr<Session>& session){
+//    auto self = shared_from_this();
     session->getSocket().async_handshake(
             boost::asio::ssl::stream_base::server,
             [this, session](const boost::system::error_code& error){
@@ -139,20 +140,26 @@ void Server::do_auth(const std::shared_ptr<Session>& session){
                     const boost::system::error_code& error,
                     std::size_t bytes_transferred           // Number of bytes written from the
             ){
+                std::cout << "do_auth: " <<  error.message() << std::endl;
                 if(!error){
-                    std::cout << "do_auth: " <<  error.message() << std::endl;
-
-                    std::string data = boost::asio::buffer_cast<const char*>(buf.data());
-                    // rimuovo i terminatori quindi gli ultimi due caratteri
-                    std::string json = data.substr(0, data.length()-2);
-                    User user(json);
-                    if(auth(user)){
-                        session->setUsername(user.getUsername());
-                        // todo: devo mantenere un lista aggiornata con lo stato delle sessioni tcp aperte
+                    try {
+                        std::string data = boost::asio::buffer_cast<const char*>(buf.data());
+                        std::cout << data << std::endl;
+                        // rimuovo i terminatori quindi gli ultimi due caratteri
+                        std::string json = data.substr(0, data.length()-2);
+                        User user(json);
+                        if(auth(user)){
+                            session->setUsername(user.getUsername());
+                            // todo: devo mantenere un lista aggiornata con lo stato delle sessioni tcp aperte
 //                        sessions[user.getUsername()] = session;
-                        session->setMap(synced_files[user.getUsername()]);
-                        session->sendOKRespAndRestart();
-                    } else session->sendKORespAndClose();
+                            session->setMap(synced_files[user.getUsername()]);
+//                            session->sendOKRespAndRestart();
+
+                        }
+//                        else session->sendKORespAndClose();
+                    } catch(std::exception& e) {
+                        std::cout << e.what() << std::endl;
+                    }
                 }
             });
 }

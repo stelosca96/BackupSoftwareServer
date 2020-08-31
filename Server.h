@@ -7,6 +7,7 @@
 
 #include <boost/asio/ssl.hpp>
 #include <boost/asio.hpp>
+#include <boost/enable_shared_from_this.hpp>
 #include "User.h"
 #include "Session.h"
 #include "SyncedFileServer.h"
@@ -15,7 +16,7 @@
 
 using boost::asio::ip::tcp;
 
-class Server {
+class Server: boost::enable_shared_from_this<Server>{
 private:
     tcp::acceptor acceptor_;
     boost::asio::ssl::context context_;
@@ -41,7 +42,6 @@ public:
 
     void do_auth(const std::shared_ptr<Session> &session);
 
-    void wait_auth(const std::shared_ptr<Session> &session);
 };
 
 
