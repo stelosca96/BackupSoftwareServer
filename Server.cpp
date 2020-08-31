@@ -174,9 +174,9 @@ Server::Server(boost::asio::io_context &io_context, unsigned short port, unsigne
             | boost::asio::ssl::context::no_sslv2
             | boost::asio::ssl::context::single_dh_use);
     context_.set_password_callback(std::bind(&Server::get_password, this));
-    context_.use_certificate_chain_file("/home/stefano/CLionProjects/test_ssl/user.crt");
-    context_.use_private_key_file("/home/stefano/CLionProjects/test_ssl/user.key", boost::asio::ssl::context::pem);
-    context_.use_tmp_dh_file("/home/stefano/CLionProjects/test_ssl/dh2048.pem");
+    context_.use_certificate_chain_file("cert/user.crt");
+    context_.use_private_key_file("cert/user.key", boost::asio::ssl::context::pem);
+    context_.use_tmp_dh_file("cert/dh2048.pem");
 
     try {
         loadUsers();
