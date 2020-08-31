@@ -24,11 +24,13 @@ private:
     boost::asio::ssl::stream<tcp::socket> &getSocket();
     friend class Server;
 
+
 public:
     Session(
             tcp::socket socket,
             boost::asio::ssl::context& context
     );
+    ~Session();
     void sendOKRespAndRestart();
     void sendKORespAndRestart();
     void sendKORespAndClose();

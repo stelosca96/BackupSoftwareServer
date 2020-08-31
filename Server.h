@@ -16,7 +16,7 @@
 
 using boost::asio::ip::tcp;
 
-class Server: boost::enable_shared_from_this<Server>{
+class Server: public boost::enable_shared_from_this<Server>{
 private:
     tcp::acceptor acceptor_;
     boost::asio::ssl::context context_;
