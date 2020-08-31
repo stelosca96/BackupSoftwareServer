@@ -134,21 +134,32 @@ void Server::do_handshake(const std::shared_ptr<Session>& session){
 void Server::do_auth(const std::shared_ptr<Session>& session){
     sessions.push_back(session);
     boost::asio::streambuf buf;
+//    session->getSocket().async_read_some(
+//            boost::asio::buffer(data_),
+//            [this](const boost::system::error_code& ec, std::size_t length)
+//            {
+//                if (!ec)
+//                {
+//                    std::cout << data_ << length << std::endl;
+//                }
+//            });
+//    session->getSocket().as
     boost::asio::async_read_until(
             session->getSocket(),
-            buf,
+            session->buf,
             "\\\n",
-            [this, session, &buf](
+            [this, session](
                     const boost::system::error_code& error,
                     std::size_t bytes_transferred           // Number of bytes written from the
             ){
                 std::cout << "do_auth: " <<  error.message() << std::endl;
                 if(!error){
                     try {
-                        std::string data = boost::asio::buffer_cast<const char*>(buf.data());
+                        std::string data = boost::asio::buffer_cast<const char*>(session->buf.data());
+                        session->buf.consume(bytes_transferred);
                         // rimuovo i terminatori quindi gli ultimi due caratteri
                         std::string json = data.substr(0, data.length()-2);
-                        std::cout << json << std::endl;
+                        std::cout << data << "size: " << bytes_transferred << std::endl;
 
                         User user(json);
                         if(auth(user)){
@@ -156,7 +167,6 @@ void Server::do_auth(const std::shared_ptr<Session>& session){
                             // todo: devo mantenere un lista aggiornata con lo stato delle sessioni tcp aperte
                             session->setMap(synced_files[user.getUsername()]);
                             session->sendOKRespAndRestart();
-
                         }
                         else session->sendKORespAndClose();
                     } catch(std::exception& e) {

@@ -160,33 +160,45 @@ void Session::getFileEnd(const std::shared_ptr<SyncedFileServer>& sfp, const std
 
 void Session::getFileR(
         const std::shared_ptr<SyncedFileServer>& sfp,
-        std::ofstream& file,
+        std::shared_ptr<std::ofstream> file_ptr,
         const std::string& filePath,
         ssize_t sizeRead){
     // il file che ricevo è già aperto, ma verifico che lo sia
-    if(!file.is_open()){
+    if(!file_ptr->is_open()){
         std::cout << "File not opened: " << filePath << std::endl;
         this->sendKORespAndRestart();
     }
     if(sizeRead>=sfp->getFileSize()){
         std::cout << "Ho terminato il trasferimento del file" << std::endl;
-        file.close();
+        file_ptr->close();
         this->getFileEnd(sfp, filePath);
         return;
     }
     std::cout << "Continuo il trasferimento del file" << std::endl;
+    const ssize_t size_left = sfp->getFileSize()-sizeRead;
+    std::cout << "size_left: " <<  size_left << std::endl;
+
+    // scelgo la dimensione massima del buffer
+    const ssize_t buff_size = size_left<N ? size_left: N;
     boost::asio::async_read(
             socket_,
-            buf,
-            [this, sfp, sizeRead, &file, &filePath](
+            boost::asio::buffer(data_, buff_size),
+            [this, sfp, sizeRead, file_ptr, filePath](
                     const boost::system::error_code& error, // Result of operation.
                     std::size_t bytes_transferred           // Number of bytes copied into the
             ){
+
+                std::cout << "getFileR: " <<  error.message() << std::endl;
+
+                if(!file_ptr->is_open()){
+                    std::cout << "File not opened: " << filePath << std::endl;
+                }
                 if(!error){
+                    std::cout << "bytes_transferred: " <<  bytes_transferred << std::endl;
                     // se non si sono verificati errori scrivo il file
-                    std::string data = boost::asio::buffer_cast<const char*>(buf.data());
-                    file.write(data.c_str(), bytes_transferred);
-                    this->getFileR(sfp, file, filePath, sizeRead+bytes_transferred);
+                    data_[bytes_transferred] = '\0';
+                    file_ptr->write(data_, bytes_transferred);
+                    this->getFileR(sfp, file_ptr, filePath, sizeRead+bytes_transferred);
                 } else {
                     // altrimenti gestisco l'errore
                 }
@@ -199,10 +211,9 @@ void Session::getFile(const std::shared_ptr<SyncedFileServer>& sfp){
     std::string filePath(tempFilePath());
 
     // apro il file
-    std::ofstream file(filePath, std::ios::binary);
-
+    auto file_ptr = std::make_shared<std::ofstream>(filePath, std::ios::binary);
     // avvio la callback ricorsiva
-    this->getFileR(sfp, file, filePath, 0);
+    this->getFileR(sfp, file_ptr, filePath, 0);
 }
 
 // richiedo il file solo se non è già presente o è diverso
@@ -223,8 +234,9 @@ void Session::sendNORespAndGetFile(const std::shared_ptr<SyncedFileServer>& sfp)
                         const boost::system::error_code& error,
                         std::size_t bytes_transferred           // Number of bytes written from the
                 ){
+                    std::cout << "sendNORespAndGetFile: " <<  error.message() << std::endl;
+
                     if(!error){
-                        std::cout << "sendNORespAndGetFile: " <<  error.message() << std::endl;
                         std::cout << "FILE NO" << std::endl;
                         this->getFile(sfp);
                     } else this->sendKORespAndClose();
@@ -240,7 +252,7 @@ void Session::sendNORespAndGetFile(const std::shared_ptr<SyncedFileServer>& sfp)
 void Session::getInfoFile() {
     boost::asio::async_read_until(
             socket_,
-            buf,
+            this->buf,
             "\\\n",
             [this](
                     const boost::system::error_code& error,
@@ -249,8 +261,11 @@ void Session::getInfoFile() {
                 std::cout << "getInfoFile: " <<  error.message() << std::endl;
                 if(!error){
                     // todo: gestire errore
-                    std::string data = boost::asio::buffer_cast<const char*>(buf.data());
+                    // terminate called after throwing an instance of 'boost::wrapexcept<boost::property_tree::ptree_bad_path>'
+                    std::string data = boost::asio::buffer_cast<const char*>(this->buf.data());
+                    buf.consume(bytes_transferred);
                     // rimuovo i terminatori quindi gli ultimi due caratteri
+                    std::cout << data << "size: " << bytes_transferred << std::endl;
                     std::string json = data.substr(0, data.length()-2);
                     std::shared_ptr<SyncedFileServer> sfp = std::make_shared<SyncedFileServer>(json);
                     switch (sfp->getFileStatus()){

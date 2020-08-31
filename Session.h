@@ -8,6 +8,7 @@
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
 #include "SyncedFileServer.h"
+#include <boost/asio/buffer.hpp>
 #include "Server.h"
 using boost::asio::ip::tcp;
 typedef boost::asio::ssl::stream<tcp::socket> ssl_socket;
@@ -19,6 +20,8 @@ private:
     ssl_socket socket_;
     std::string username;
     boost::asio::streambuf buf;
+    char data_[N+1];
+
     void saveMap(const std::string& username);
 
     boost::asio::ssl::stream<tcp::socket> &getSocket();
@@ -46,8 +49,12 @@ public:
 
     void getFileEnd(const std::shared_ptr<SyncedFileServer>& sfp, const std::string& filePath);
 
-    void getFileR(const std::shared_ptr<SyncedFileServer> &sfp, std::ofstream &file, const std::string &filePath,
-                  ssize_t sizeRead);
+    void getFileR(
+            const std::shared_ptr<SyncedFileServer>& sfp,
+            std::shared_ptr<std::ofstream> file_ptr,
+            const std::string& filePath,
+            ssize_t sizeRead
+    );
 
     void moveFile(const std::shared_ptr<SyncedFileServer> &sfp, const std::string &tempPath);
 
