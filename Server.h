@@ -24,8 +24,8 @@ private:
     const std::string file_users = "users_list.conf";
     std::shared_mutex mutex_map;
     std::unordered_map<std::string, std::shared_ptr<std::unordered_map<std::string, std::shared_ptr<SyncedFileServer>>>> synced_files;
-    std::unordered_map<std::string, std::shared_ptr<Session>> sessions;
-//    Jobs jobs;
+    std::vector<std::shared_ptr<Session>> sessions;
+    //    Jobs jobs;
 
     void loadUsers();
     void saveUsername(const User& user);

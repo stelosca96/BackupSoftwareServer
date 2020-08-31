@@ -131,12 +131,13 @@ void Server::do_handshake(const std::shared_ptr<Session>& session){
 }
 
 void Server::do_auth(const std::shared_ptr<Session>& session){
+    sessions.push_back(session);
     boost::asio::streambuf buf;
     boost::asio::async_read_until(
             session->getSocket(),
             buf,
             "\\\n",
-            [this, &session, &buf](
+            [this, session, &buf](
                     const boost::system::error_code& error,
                     std::size_t bytes_transferred           // Number of bytes written from the
             ){
@@ -151,12 +152,11 @@ void Server::do_auth(const std::shared_ptr<Session>& session){
                         if(auth(user)){
                             session->setUsername(user.getUsername());
                             // todo: devo mantenere un lista aggiornata con lo stato delle sessioni tcp aperte
-//                        sessions[user.getUsername()] = session;
                             session->setMap(synced_files[user.getUsername()]);
-//                            session->sendOKRespAndRestart();
+                            session->sendOKRespAndRestart();
 
                         }
-//                        else session->sendKORespAndClose();
+                        else session->sendKORespAndClose();
                     } catch(std::exception& e) {
                         std::cout << e.what() << std::endl;
                     }
@@ -174,9 +174,9 @@ Server::Server(boost::asio::io_context &io_context, unsigned short port, unsigne
             | boost::asio::ssl::context::no_sslv2
             | boost::asio::ssl::context::single_dh_use);
     context_.set_password_callback(std::bind(&Server::get_password, this));
-    context_.use_certificate_chain_file("cert/user.crt");
-    context_.use_private_key_file("cert/user.key", boost::asio::ssl::context::pem);
-    context_.use_tmp_dh_file("cert/dh2048.pem");
+    context_.use_certificate_chain_file("../cert/user.crt");
+    context_.use_private_key_file("../cert/user.key", boost::asio::ssl::context::pem);
+    context_.use_tmp_dh_file("../cert/dh2048.pem");
 
     try {
         loadUsers();
