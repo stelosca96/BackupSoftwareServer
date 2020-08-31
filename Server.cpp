@@ -106,9 +106,13 @@ std::string Server::get_password() {
 void Server::do_accept() {
     acceptor_.async_accept(
             [this](const boost::system::error_code& error, tcp::socket socket){
+                std::cout << "do_accept: " <<  error.message() << std::endl;
                 if (!error){
-                    std::make_shared<Session>(std::move(socket), context_)->start();
+                    auto session = std::make_shared<Session>(std::move(socket), context_);
+                    this->do_handshake(session);
+                    this->do_accept();
                 }
+                // todo: se l'accept non va a buon fine cosa faccio? Chiudo il programma?
             });
 }
 
@@ -116,9 +120,11 @@ void Server::do_handshake(const std::shared_ptr<Session>& session){
     session->getSocket().async_handshake(
             boost::asio::ssl::stream_base::server,
             [this, session](const boost::system::error_code& error){
+                std::cout << "do_handshake: " <<  error.message() << std::endl;
                 if(!error){
                     this->do_auth(session);
                 }
+                // se l'handshake non va a bon fine la sesione tcp verrà chiusa
             }
     );
 }
@@ -134,6 +140,8 @@ void Server::do_auth(const std::shared_ptr<Session>& session){
                     std::size_t bytes_transferred           // Number of bytes written from the
             ){
                 if(!error){
+                    std::cout << "do_auth: " <<  error.message() << std::endl;
+
                     std::string data = boost::asio::buffer_cast<const char*>(buf.data());
                     // rimuovo i terminatori quindi gli ultimi due caratteri
                     std::string json = data.substr(0, data.length()-2);

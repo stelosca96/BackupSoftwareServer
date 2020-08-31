@@ -7,6 +7,7 @@
 #include "exceptions/socketException.h"
 #include "exceptions/dataException.h"
 #include "exceptions/filesystemException.h"
+#include "Server.h"
 #include <filesystem>
 #include <fstream>
 #include <boost/property_tree/exceptions.hpp>
@@ -282,6 +283,11 @@ std::unordered_map<std::string, std::shared_ptr<std::unordered_map<std::string, 
 //}
 
 int main() {
+    boost::asio::io_service io_service;
+
+    Server server(io_service, 9999, 100);
+    server.do_accept();
+    io_service.run();
 //    try {
 //        loadUsers();
 //        try {

@@ -36,7 +36,21 @@ Session::Session(tcp::socket socket, boost::asio::ssl::context &context):
 }
 
 void Session::sendOKRespAndRestart() {
-
+    std::string buffer = "OK\\\n";
+    boost::asio::async_write(
+            socket_,
+            boost::asio::buffer(buffer, buffer.size()),
+            [this](
+                    const boost::system::error_code& error,
+                    std::size_t bytes_transferred           // Number of bytes written from the
+            ){
+                std::cout << "sendOKRespAndRestart: " <<  error.message() << std::endl;
+                if(!error){
+                    this->getInfoFile();
+                }
+                // toodo: gestire errore
+//                        else this->sendKORespAndClose();
+            });
 }
 
 void Session::sendKORespAndRestart() {
@@ -210,6 +224,7 @@ void Session::sendNORespAndGetFile(const std::shared_ptr<SyncedFileServer>& sfp)
                         std::size_t bytes_transferred           // Number of bytes written from the
                 ){
                     if(!error){
+                        std::cout << "sendNORespAndGetFile: " <<  error.message() << std::endl;
                         std::cout << "FILE NO" << std::endl;
                         this->getFile(sfp);
                     } else this->sendKORespAndClose();
@@ -231,7 +246,7 @@ void Session::getInfoFile() {
                     const boost::system::error_code& error,
                     std::size_t bytes_transferred           // Number of bytes written from the
             ){
-                std::cout << error.message() << std::endl;
+                std::cout << "getInfoFile: " <<  error.message() << std::endl;
                 if(!error){
                     // todo: gestire errore
                     std::string data = boost::asio::buffer_cast<const char*>(buf.data());
@@ -259,8 +274,3 @@ void Session::getInfoFile() {
                 } else this->sendKORespAndClose();
             });
 }
-
-void Session::start() {
-    this->getInfoFile();
-}
-

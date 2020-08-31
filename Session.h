@@ -50,8 +50,6 @@ public:
     void moveFile(const std::shared_ptr<SyncedFileServer> &sfp, const std::string &tempPath);
 
     void deleteFile(const std::shared_ptr<SyncedFileServer> &sfp);
-
-    void start();
 };
 
 
