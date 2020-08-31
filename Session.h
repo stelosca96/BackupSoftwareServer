@@ -22,27 +22,9 @@ private:
     boost::asio::streambuf buf;
     char data_[N+1];
 
-    void saveMap(const std::string& username);
-
-    boost::asio::ssl::stream<tcp::socket> &getSocket();
-    friend class Server;
-
-
-public:
-    Session(
-            tcp::socket socket,
-            boost::asio::ssl::context& context
-    );
-    ~Session();
+    void saveMap();
     void sendOKRespAndRestart();
     void sendKORespAndRestart();
-    void sendKORespAndClose();
-    void sendNORespAndGetFile(const std::shared_ptr<SyncedFileServer>& sfp);
-    void getInfoFile();
-    void setMap(std::shared_ptr<std::unordered_map<std::string, std::shared_ptr<SyncedFileServer>>> userMap);
-
-    void setUsername(std::string username);
-
     void getFile(const std::shared_ptr<SyncedFileServer>& sfp);
 
     static std::string tempFilePath();
@@ -59,6 +41,28 @@ public:
     void moveFile(const std::shared_ptr<SyncedFileServer> &sfp, const std::string &tempPath);
 
     void deleteFile(const std::shared_ptr<SyncedFileServer> &sfp);
+
+    void deleteFileMap(const std::shared_ptr<SyncedFileServer> &sfp);
+    boost::asio::ssl::stream<tcp::socket> &getSocket();
+    friend class Server;
+
+
+public:
+    Session(
+            tcp::socket socket,
+            boost::asio::ssl::context& context
+    );
+    ~Session();
+
+    void sendKORespAndClose();
+    void sendNORespAndGetFile(const std::shared_ptr<SyncedFileServer>& sfp);
+    void getInfoFile();
+    void setMap(std::shared_ptr<std::unordered_map<std::string, std::shared_ptr<SyncedFileServer>>> userMap);
+
+    void setUsername(std::string username);
+
+
+    void sendRespAndRestart(const std::string &mex);
 };
 
 

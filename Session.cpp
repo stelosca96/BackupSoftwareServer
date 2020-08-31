@@ -16,7 +16,7 @@
 
 namespace pt = boost::property_tree;
 
-void Session::saveMap(const std::string& username){
+void Session::saveMap(){
     // todo: gestire eccezioni
     pt::ptree pt;
     for(auto const& [key, val] : (*user_map)){
@@ -32,7 +32,6 @@ boost::asio::ssl::stream<tcp::socket> &Session::getSocket(){
 
 Session::Session(tcp::socket socket, boost::asio::ssl::context &context):
         socket_(std::move(socket), context){
-
 }
 
 void Session::sendOKRespAndRestart() {
@@ -54,7 +53,23 @@ void Session::sendOKRespAndRestart() {
 }
 
 void Session::sendKORespAndRestart() {
+    std::string buffer = "KO\\\n";
+    boost::asio::async_write(
+            socket_,
+            boost::asio::buffer(buffer, buffer.size()),
+            [this](
+                    const boost::system::error_code& error,
+                    std::size_t bytes_transferred           // Number of bytes written from the
+            ){
+                std::cout << "sendOKRespAndRestart: " <<  error.message() << std::endl;
+                if(!error){
+                    this->getInfoFile();
 
+                }
+                // se l'invio del KO non va a buon fine potrei chiudere la connessione
+                // todo: gestire errore
+//                        else this->sendKORespAndClose();
+            });
 }
 
 void Session::sendKORespAndClose() {
@@ -118,22 +133,15 @@ void Session::deleteFile(const std::shared_ptr<SyncedFileServer>& sfp){
     std::cout << user_path << " erased" << std::endl;
 }
 
-//void deleteFileMap(const std::shared_ptr<SyncedFileServer>& sfp){
-//    std::cout << "Qua" << std::endl;
-//
-//    if(synced_files.find(sfp->getPath())!=synced_files.end()){
-//        std::cout << "Quo" << std::endl;
-//
-//        std::shared_lock map_lock(mutex_map);
-//        auto user_map = synced_files.find(sock->getUsername())->second;
-//        map_lock.unlock();
-//        user_map->erase(sfp->getPath());
-//    }
-//    std::cout << "Qui" << std::endl;
-//    deleteFile(sock->getUsername(), sfp);
-//    sock->sendOKResp();
-//    std::cout << "FILE OK" << std::endl;
-//}
+void Session::deleteFileMap(const std::shared_ptr<SyncedFileServer>& sfp){
+    std::cout << "Elimino il file " << sfp->getPath() << std::endl;
+    // todo: cosa succede se la mappa non contiene il file? genera eccezioni?
+    user_map->erase(sfp->getPath());
+    deleteFile(sfp);
+    saveMap();
+    this->sendOKRespAndRestart();
+    std::cout << "FILE OK" << std::endl;
+}
 
 void Session::getFileEnd(const std::shared_ptr<SyncedFileServer>& sfp, const std::string& tempPath){
     // controllo che il file ricevuto sia quello che mi aspettavo e che non ci siano stati errori
@@ -145,7 +153,8 @@ void Session::getFileEnd(const std::shared_ptr<SyncedFileServer>& sfp, const std
         moveFile(sfp, tempPath);
         // aggiorno il valore della mappa
         (*user_map)[sfp->getPath()] = sfp;
-        this->sendKORespAndRestart();
+        saveMap();
+        this->sendOKRespAndRestart();
     }
         // altrimenti comunico il problema al client che gestirà l'errore
     else {
@@ -260,33 +269,41 @@ void Session::getInfoFile() {
             ){
                 std::cout << "getInfoFile: " <<  error.message() << std::endl;
                 if(!error){
-                    // todo: gestire errore
-                    // terminate called after throwing an instance of 'boost::wrapexcept<boost::property_tree::ptree_bad_path>'
-                    std::string data = boost::asio::buffer_cast<const char*>(this->buf.data());
-                    buf.consume(bytes_transferred);
-                    // rimuovo i terminatori quindi gli ultimi due caratteri
-                    std::cout << data << "size: " << bytes_transferred << std::endl;
-                    std::string json = data.substr(0, data.length()-2);
-                    std::shared_ptr<SyncedFileServer> sfp = std::make_shared<SyncedFileServer>(json);
-                    switch (sfp->getFileStatus()){
-                        case FileStatus::created:
-                            std::cout << "created" << std::endl;
-                            sendNORespAndGetFile(sfp);
-                            break;
-                        case FileStatus::modified:
-                            std::cout << "modified" << std::endl;
-                            sendNORespAndGetFile(sfp);
-                            break;
-                        case FileStatus::erased:
-                            std::cout << "erased" << std::endl;
-//                            deleteFileMap(sfp, sock);
-                            break;
-                        case FileStatus::not_valid:
-                            std::cout << "not valid" << std::endl;
-                            this->sendKORespAndRestart();
-                            break;
-                    }
-                } else this->sendKORespAndClose();
+                    try {
+
+                        // todo: gestire errore
+                        // terminate called after throwing an instance of 'boost::wrapexcept<boost::property_tree::ptree_bad_path>'
+                        std::string data = boost::asio::buffer_cast<const char*>(this->buf.data());
+                        buf.consume(bytes_transferred);
+                        // rimuovo i terminatori quindi gli ultimi due caratteri
+                        std::string json = data.substr(0, bytes_transferred-2);
+                        std::cout << json << "size: " << bytes_transferred << std::endl;
+                        std::shared_ptr<SyncedFileServer> sfp = std::make_shared<SyncedFileServer>(json);
+                        switch (sfp->getFileStatus()) {
+                            case FileStatus::created:
+                                std::cout << "created" << std::endl;
+                                sendNORespAndGetFile(sfp);
+                                break;
+                            case FileStatus::modified:
+                                std::cout << "modified" << std::endl;
+                                sendNORespAndGetFile(sfp);
+                                break;
+                            case FileStatus::erased:
+                                std::cout << "erased" << std::endl;
+                                deleteFileMap(sfp);
+                                break;
+                            case FileStatus::not_valid:
+                                std::cout << "not valid" << std::endl;
+                                this->sendKORespAndRestart();
+                                break;
+                        }
+                        } catch (std::runtime_error &exception) {
+                            // loggo l'errore e riaggiungo la connessione alla lista dei jobs dopo avere mandato un KO al client
+                            std::cout << exception.what() << std::endl;
+                            // todo: dovrei pulire il buffer
+                            this->sendOKRespAndRestart();
+                        }
+                } else this->sendOKRespAndRestart();
             });
 }
 
