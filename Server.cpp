@@ -104,26 +104,29 @@ std::string Server::get_password() {
 }
 
 void Server::do_accept() {
+//    auto self(shared_from_this());
     acceptor_.async_accept(
             [this](const boost::system::error_code& error, tcp::socket socket){
                 std::cout << "do_accept: " <<  error.message() << std::endl;
                 if (!error){
                     auto session = std::make_shared<Session>(std::move(socket), context_);
-                    this->do_handshake(session);
-                    this->do_accept();
+                    do_handshake(session);
+                    do_accept();
+
                 }
                 // todo: se l'accept non va a buon fine cosa faccio? Chiudo il programma?
             });
 }
 
 void Server::do_handshake(const std::shared_ptr<Session>& session){
-//    auto self = shared_from_this();
+//    auto self(shared_from_this());
+    std::cout << "do_handshake start" << std::endl;
     session->getSocket().async_handshake(
             boost::asio::ssl::stream_base::server,
             [this, session](const boost::system::error_code& error){
                 std::cout << "do_handshake: " <<  error.message() << std::endl;
                 if(!error){
-                    this->do_auth(session);
+                    do_auth(session);
                 }
                 // se l'handshake non va a bon fine la sesione tcp verrà chiusa
             }
@@ -132,6 +135,8 @@ void Server::do_handshake(const std::shared_ptr<Session>& session){
 
 void Server::do_auth(const std::shared_ptr<Session>& session){
     boost::asio::streambuf buf;
+    sessions.push_back(session);
+//    auto self = shared_from_this();
     boost::asio::async_read_until(
             session->getSocket(),
             buf,
@@ -144,15 +149,15 @@ void Server::do_auth(const std::shared_ptr<Session>& session){
                 if(!error){
                     try {
                         std::string data = boost::asio::buffer_cast<const char*>(buf.data());
-                        std::cout << data << std::endl;
                         // rimuovo i terminatori quindi gli ultimi due caratteri
                         std::string json = data.substr(0, data.length()-2);
+                        std::cout << json << std::endl;
+
                         User user(json);
                         if(auth(user)){
                             session->setUsername(user.getUsername());
                             // todo: devo mantenere un lista aggiornata con lo stato delle sessioni tcp aperte
-//                        sessions[user.getUsername()] = session;
-                            session->setMap(synced_files[user.getUsername()]);
+                        session->setMap(synced_files[user.getUsername()]);
 //                            session->sendOKRespAndRestart();
 
                         }
@@ -174,9 +179,9 @@ Server::Server(boost::asio::io_context &io_context, unsigned short port, unsigne
             | boost::asio::ssl::context::no_sslv2
             | boost::asio::ssl::context::single_dh_use);
     context_.set_password_callback(std::bind(&Server::get_password, this));
-    context_.use_certificate_chain_file("cert/user.crt");
-    context_.use_private_key_file("cert/user.key", boost::asio::ssl::context::pem);
-    context_.use_tmp_dh_file("cert/dh2048.pem");
+    context_.use_certificate_chain_file("../cert/user.crt");
+    context_.use_private_key_file("../cert/user.key", boost::asio::ssl::context::pem);
+    context_.use_tmp_dh_file("../cert/dh2048.pem");
 
     try {
         loadUsers();

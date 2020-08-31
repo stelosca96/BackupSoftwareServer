@@ -16,7 +16,7 @@
 
 using boost::asio::ip::tcp;
 
-class Server: boost::enable_shared_from_this<Server>{
+class Server: public boost::enable_shared_from_this<Server>{
 private:
     tcp::acceptor acceptor_;
     boost::asio::ssl::context context_;
@@ -24,7 +24,7 @@ private:
     const std::string file_users = "users_list.conf";
     std::shared_mutex mutex_map;
     std::unordered_map<std::string, std::shared_ptr<std::unordered_map<std::string, std::shared_ptr<SyncedFileServer>>>> synced_files;
-    std::unordered_map<std::string, std::shared_ptr<Session>> sessions;
+    std::vector<std::shared_ptr<Session>> sessions;
 //    Jobs jobs;
 
     void loadUsers();

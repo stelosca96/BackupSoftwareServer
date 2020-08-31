@@ -274,3 +274,7 @@ void Session::getInfoFile() {
                 } else this->sendKORespAndClose();
             });
 }
+
+Session::~Session() {
+    std::cout << "Sessione distrutta" << std::endl;
+}
