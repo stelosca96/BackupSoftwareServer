@@ -14,7 +14,7 @@ private:
     std::string salt;
     std::string password;
     std::string hash;
-    const static unsigned int N = 5;
+    const static unsigned int N = 7;
 
     std::string getHash(const std::string &password);
     static std::string randomString(size_t length);

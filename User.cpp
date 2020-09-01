@@ -8,6 +8,7 @@
 #include <iostream>
 #include <utility>
 #include <openssl/sha.h>
+#include <ctime>
 
 namespace pt = boost::property_tree;
 
@@ -28,6 +29,8 @@ std::string User::randomString(size_t length){
         const size_t max_index = (sizeof(charset) - 1);
         return charset[ random() % max_index ];
     };
+    unsigned seed = time(nullptr);
+    srandom(seed);
     std::string str(length,0);
     std::generate_n( str.begin(), length, randChar );
     return str;
