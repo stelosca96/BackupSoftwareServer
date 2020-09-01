@@ -44,9 +44,9 @@ private:
 
     void deleteFileMap(const std::shared_ptr<SyncedFileServer> &sfp);
     boost::asio::ssl::stream<tcp::socket> &getSocket();
+    void clearBuffer();
+
     friend class Server;
-
-
 public:
     Session(
             tcp::socket socket,
@@ -58,13 +58,8 @@ public:
     void sendNORespAndGetFile(const std::shared_ptr<SyncedFileServer>& sfp);
     void getInfoFile();
     void setMap(std::shared_ptr<std::unordered_map<std::string, std::shared_ptr<SyncedFileServer>>> userMap);
-
     void setUsername(std::string username);
 
-
-    void sendRespAndRestart(const std::string &mex);
-
-    void clearBuffer();
 };
 
 

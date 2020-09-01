@@ -197,7 +197,7 @@ void Session::getFileR(
             boost::asio::buffer(data_, buff_size),
             [this, sfp, sizeRead, file_ptr, filePath](
                     const boost::system::error_code& error, // Result of operation.
-                    std::size_t bytes_transferred           // Number of bytes copied into the
+                    std::size_t bytes_transferred           // Number of bytes copied into the buffer
             ){
 
                 std::cout << "getFileR: " <<  error.message() << " " << error.value() << std::endl;
@@ -212,8 +212,12 @@ void Session::getFileR(
                     file_ptr->write(data_, bytes_transferred);
                     this->getFileR(sfp, file_ptr, filePath, sizeRead+bytes_transferred);
                 } else {
+                    file_ptr->close();
+                    std::filesystem::remove(filePath);
+                    this->sendKORespAndRestart();
                     // altrimenti gestisco l'errore
                 }
+                // todo: gestire errore e eccezione in caso di write fallita
             });
 }
 
@@ -224,6 +228,8 @@ void Session::getFile(const std::shared_ptr<SyncedFileServer>& sfp){
 
     // apro il file
     auto file_ptr = std::make_shared<std::ofstream>(filePath, std::ios::binary);
+    // todo: gestire eccezione in caso di open file fallita
+
     // avvio la callback ricorsiva
     this->getFileR(sfp, file_ptr, filePath, 0);
 }
@@ -242,10 +248,7 @@ void Session::sendNORespAndGetFile(const std::shared_ptr<SyncedFileServer>& sfp)
         boost::asio::async_write(
                 socket_,
                 boost::asio::buffer(buffer, buffer.size()),
-                [this, sfp](
-                        const boost::system::error_code& error,
-                        std::size_t bytes_transferred           // Number of bytes written from the
-                ){
+                [this, sfp](const boost::system::error_code& error, std::size_t bytes_transferred){
                     std::cout << "sendNORespAndGetFile: " <<  error.message() << " " << error.value() << std::endl;
 
                     if(!error){
@@ -272,20 +275,15 @@ void Session::clearBuffer(){
 }
 
 void Session::getInfoFile() {
+    // attendo un json con le informazioni sul file
     boost::asio::async_read_until(
             socket_,
             this->buf,
             "\\\n",
-            [this](
-                    const boost::system::error_code& error,
-                    std::size_t bytes_transferred           // Number of bytes written from the
-            ){
+            [this](const boost::system::error_code& error, std::size_t bytes_transferred){
                 std::cout << "getInfoFile: " <<  error.message() << " " << error.value() << std::endl;
                 if(!error){
                     try {
-
-                        // todo: gestire errore
-                        // terminate called after throwing an instance of 'boost::wrapexcept<boost::property_tree::ptree_bad_path>'
                         std::string data = boost::asio::buffer_cast<const char*>(this->buf.data());
                         buf.consume(bytes_transferred);
                         // rimuovo i terminatori quindi gli ultimi due caratteri
@@ -311,15 +309,23 @@ void Session::getInfoFile() {
                                 break;
                         }
                         } catch (std::runtime_error &exception) {
+                            // todo: se si verifica un errore sul filesystem forse dovrei chiudere il client anche se in questo caso l'errore può essere solo sulla delete
+                            // se si verifica un errore potrebbe essere dovuto dal filesystem o da un errore sui dati
                             // loggo l'errore e riavvio il lavoro dopo avere mandato un KO al client
                             std::cout << exception.what() << std::endl;
                             this->clearBuffer();
-                            this->sendOKRespAndRestart();
+                            this->sendKORespAndRestart();
                         }
                 } else this->sendOKRespAndRestart();
             });
 }
 
+void Session::setMap(std::shared_ptr<std::unordered_map<std::string, std::shared_ptr<SyncedFileServer>>> userMap){
+    this->user_map = std::move(userMap);
+}
+
 Session::~Session() {
     std::cout << "Sessione distrutta" << std::endl;
 }
+
+
