@@ -63,6 +63,8 @@ public:
 
 
     void sendRespAndRestart(const std::string &mex);
+
+    void clearBuffer();
 };
 
 

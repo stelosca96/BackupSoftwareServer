@@ -9,7 +9,6 @@
 #include "exceptions/socketException.h"
 #include "exceptions/dataException.h"
 #include "exceptions/filesystemException.h"
-#include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/property_tree/exceptions.hpp>
 #include <boost/property_tree/json_parser/error.hpp>
@@ -20,10 +19,10 @@ namespace pt = boost::property_tree;
 void Server::loadUsers(){
     std::cout << "Load users" << std::endl;
     std::ifstream infile(file_users);
-    std::string username, password;
-    while (infile >> username >> password){
-        std::cout << "U: " << username << " P: " << password << std::endl;
-        users[username] = User(username, password);
+    std::string username, hash, salt;
+    while (infile >> username >> hash >> salt){
+        std::cout << "U: " << username << " P: " << hash << std::endl;
+        users[username] = User(username, hash, salt);
     }
 }
 
@@ -33,7 +32,7 @@ void Server::saveUsername(const User& user){
     // todo: gestire eccezione
     std::ofstream outfile;
     outfile.open(file_users, std::ios_base::app); // append instead of overwrite
-    outfile << user.getUsername() << ' ' << user.getPassword() << std::endl;
+    outfile << user.getUsername() << ' ' << user.getHashedPassword() << ' ' << user.getSalt() << std::endl;
     outfile.close();
 }
 
@@ -72,8 +71,7 @@ void Server::loadMaps(){
     }
 }
 
-bool Server::auth(const User& user){
-    //todo hashare e salare passwords
+bool Server::auth(User& user){
     auto map_user = users.find(user.getUsername());
     if (map_user == users.end()){
         // l'username deve essere lungo almeno 3 caratteri
@@ -84,18 +82,16 @@ bool Server::auth(const User& user){
         for(char i : user.getUsername())
             if(i==' ' || i=='/' || i=='\\')
                 return false;
-        // la password non deve contenere spazi
-        for(char i : user.getPassword())
-            if(i==' ')
-                return false;
         // todo: controllare che non esista già una connessione per quell'utente
         const std::string& username = user.getUsername();
+        user.calculateHash();
         users[username] = user;
         create_empty_map(username);
         saveUsername(user);
         return true;
     }
-    return map_user->second.getPassword() == user.getPassword();
+    user.setSalt(map_user->second.getSalt());
+    return map_user->second.getHashedPassword() == user.getHashedPassword();
 }
 
 
@@ -107,12 +103,16 @@ void Server::do_accept() {
     acceptor_.async_accept(
             [this](const boost::system::error_code& error, tcp::socket socket){
                 std::cout << "do_accept: " <<  error.message() << std::endl;
+                if(!socket.lowest_layer().is_open()){
+                    std::cout << "connessione chiusa" << std::endl;
+                    return;
+                }
                 if (!error){
                     auto session = std::make_shared<Session>(std::move(socket), context_);
                     this->do_handshake(session);
                     this->do_accept();
                 }
-                // todo: se l'accept non va a buon fine cosa faccio? Chiudo il programma?
+                // se l'accept non va a bon fine la sesione tcp verrà chiusa
             });
 }
 
@@ -123,6 +123,10 @@ void Server::do_handshake(const std::shared_ptr<Session>& session){
             boost::asio::ssl::stream_base::server,
             [this, session](const boost::system::error_code& error){
                 std::cout << "do_handshake: " <<  error.message() << std::endl;
+                if(!session->getSocket().lowest_layer().is_open()){
+                    std::cout << "connessione chiusa" << std::endl;
+                    return;
+                }
                 if(!error){
                     this->do_auth(session);
                 }
@@ -134,16 +138,6 @@ void Server::do_handshake(const std::shared_ptr<Session>& session){
 void Server::do_auth(const std::shared_ptr<Session>& session){
     sessions.push_back(session);
     boost::asio::streambuf buf;
-//    session->getSocket().async_read_some(
-//            boost::asio::buffer(data_),
-//            [this](const boost::system::error_code& ec, std::size_t length)
-//            {
-//                if (!ec)
-//                {
-//                    std::cout << data_ << length << std::endl;
-//                }
-//            });
-//    session->getSocket().as
     boost::asio::async_read_until(
             session->getSocket(),
             session->buf,
@@ -153,6 +147,10 @@ void Server::do_auth(const std::shared_ptr<Session>& session){
                     std::size_t bytes_transferred           // Number of bytes written from the
             ){
                 std::cout << "do_auth: " <<  error.message() << std::endl;
+                if(!session->getSocket().lowest_layer().is_open()){
+                    std::cout << "connessione chiusa" << std::endl;
+                    return;
+                }
                 if(!error){
                     try {
                         std::string data = boost::asio::buffer_cast<const char*>(session->buf.data());
@@ -169,8 +167,9 @@ void Server::do_auth(const std::shared_ptr<Session>& session){
                             session->sendOKRespAndRestart();
                         }
                         else session->sendKORespAndClose();
-                    } catch(std::exception& e) {
+                    } catch(std::runtime_error& e) {
                         std::cout << e.what() << std::endl;
+                        session->sendKORespAndClose();
                     }
                 }
             });
@@ -180,7 +179,7 @@ void Server::do_auth(const std::shared_ptr<Session>& session){
 Server::Server(boost::asio::io_context &io_context, unsigned short port, unsigned int max_sockets):
         acceptor_(io_context, tcp::endpoint(tcp::v4(), port)),
         context_(boost::asio::ssl::context::sslv23){
-    // todo: gestire un massimo numero di sockets
+    // todo: gestire un massimo numero di conessioni
     context_.set_options(
             boost::asio::ssl::context::default_workarounds
             | boost::asio::ssl::context::no_sslv2

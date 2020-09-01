@@ -43,7 +43,11 @@ void Session::sendOKRespAndRestart() {
                     const boost::system::error_code& error,
                     std::size_t bytes_transferred           // Number of bytes written from the
             ){
-                std::cout << "sendOKRespAndRestart: " <<  error.message() << std::endl;
+                std::cout << "sendOKRespAndRestart: " <<  error.message()<< " " << error.value()  << std::endl;
+                if(!socket_.lowest_layer().is_open()){
+                    std::cout << "connessione chiusa" << std::endl;
+                    return;
+                }
                 if(!error){
                     this->getInfoFile();
                 }
@@ -61,7 +65,11 @@ void Session::sendKORespAndRestart() {
                     const boost::system::error_code& error,
                     std::size_t bytes_transferred           // Number of bytes written from the
             ){
-                std::cout << "sendOKRespAndRestart: " <<  error.message() << std::endl;
+                std::cout << "sendOKRespAndRestart: " <<  error.message() << " " << error.value() << std::endl;
+                if(!socket_.lowest_layer().is_open()){
+                    std::cout << "connessione chiusa" << std::endl;
+                    return;
+                }
                 if(!error){
                     this->getInfoFile();
 
@@ -81,18 +89,13 @@ void Session::sendKORespAndClose() {
                     const boost::system::error_code& error,
                     std::size_t bytes_transferred           // Number of bytes written from the
             ){
-                if(!error){
-                    this->getInfoFile();
+                if(!socket_.lowest_layer().is_open()){
+                    std::cout << "connessione chiusa" << std::endl;
+                    return;
                 }
-                // toodo: gestire errore
-//                        else this->sendKORespAndClose();
+                std::cout << "Chiudo la connessione per un errore" << std::endl;
+                socket_.lowest_layer().close();
             });
-//            [this](const boost::system::error_code& error){
-//                if(!error){
-//                    this->getInfoFile();
-//                } else this->sendKORespAndClose();
-//            })
-//            ;
 }
 
 void Session::setUsername(std::string u) {
@@ -197,7 +200,7 @@ void Session::getFileR(
                     std::size_t bytes_transferred           // Number of bytes copied into the
             ){
 
-                std::cout << "getFileR: " <<  error.message() << std::endl;
+                std::cout << "getFileR: " <<  error.message() << " " << error.value() << std::endl;
 
                 if(!file_ptr->is_open()){
                     std::cout << "File not opened: " << filePath << std::endl;
@@ -243,7 +246,7 @@ void Session::sendNORespAndGetFile(const std::shared_ptr<SyncedFileServer>& sfp)
                         const boost::system::error_code& error,
                         std::size_t bytes_transferred           // Number of bytes written from the
                 ){
-                    std::cout << "sendNORespAndGetFile: " <<  error.message() << std::endl;
+                    std::cout << "sendNORespAndGetFile: " <<  error.message() << " " << error.value() << std::endl;
 
                     if(!error){
                         std::cout << "FILE NO" << std::endl;
@@ -258,6 +261,16 @@ void Session::sendNORespAndGetFile(const std::shared_ptr<SyncedFileServer>& sfp)
     }
 }
 
+void Session::clearBuffer(){
+    boost::asio::socket_base::bytes_readable command(true);
+    socket_.lowest_layer().io_control(command);
+    std::size_t bytes_readable = command.get();
+    std::cout << "Il buffer contiene " << bytes_readable << "bytes" << std::endl;
+    std::string data;
+    ssize_t bytes_read = boost::asio::read(socket_, boost::asio::buffer(data, bytes_readable));
+    std::cout << "Ho svuotato il buffer " << bytes_read << std::endl;
+}
+
 void Session::getInfoFile() {
     boost::asio::async_read_until(
             socket_,
@@ -267,7 +280,7 @@ void Session::getInfoFile() {
                     const boost::system::error_code& error,
                     std::size_t bytes_transferred           // Number of bytes written from the
             ){
-                std::cout << "getInfoFile: " <<  error.message() << std::endl;
+                std::cout << "getInfoFile: " <<  error.message() << " " << error.value() << std::endl;
                 if(!error){
                     try {
 
@@ -298,9 +311,9 @@ void Session::getInfoFile() {
                                 break;
                         }
                         } catch (std::runtime_error &exception) {
-                            // loggo l'errore e riaggiungo la connessione alla lista dei jobs dopo avere mandato un KO al client
+                            // loggo l'errore e riavvio il lavoro dopo avere mandato un KO al client
                             std::cout << exception.what() << std::endl;
-                            // todo: dovrei pulire il buffer
+                            this->clearBuffer();
                             this->sendOKRespAndRestart();
                         }
                 } else this->sendOKRespAndRestart();

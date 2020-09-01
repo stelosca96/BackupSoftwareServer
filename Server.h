@@ -28,7 +28,7 @@ private:
 
     void loadUsers();
     void saveUsername(const User& user);
-    bool auth(const User& user);
+    bool auth(User& user);
     std::string get_password() ;
     void create_empty_map(const std::string& username);
     void loadMap(const std::string& username);

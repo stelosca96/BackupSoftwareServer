@@ -11,19 +11,26 @@
 class User {
 private:
     std::string username;
+    std::string salt;
     std::string password;
+    std::string hash;
+    const static unsigned int N = 5;
+
+    std::string getHash(const std::string &password);
+    static std::string randomString(size_t length);
 public:
     User();
 
-    explicit User(std::string JSON);
-    User(const std::string &username, const std::string &password);
+    explicit User(const std::string& JSON);
+    User(std::string username, std::string hashPassword, std::string salt);
     User(const User &user);
 
     [[nodiscard]] const std::string &getUsername() const;
+    [[nodiscard]] const std::string &getHashedPassword() const;
+    [[nodiscard]] const std::string &getSalt() const;
 
-    [[nodiscard]] const std::string &getPassword() const;
-
-    std::string getJSON();
+    void calculateHash();
+    void setSalt(const std::string &salt);
 };
 
 
