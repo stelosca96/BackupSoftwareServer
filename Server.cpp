@@ -86,7 +86,8 @@ bool Server::auth(User& user){
             for(char k: forbiddenChars)
                 if(i==k)
                     return false;
-        // todo: controllare che non esista già una connessione per quell'utente
+        if(Session::isLogged(user.getUsername()))
+            return false;
         const std::string& username = user.getUsername();
         user.calculateHash();
         users[username] = user;
@@ -94,6 +95,8 @@ bool Server::auth(User& user){
         saveUsername(user);
         return true;
     }
+    if(Session::isLogged(user.getUsername()))
+        return false;
     user.setSalt(map_user->second.getSalt());
     return map_user->second.getHashedPassword() == user.getHashedPassword();
 }
@@ -112,7 +115,8 @@ void Server::do_accept() {
                     return;
                 }
                 if (!error){
-                    auto session = std::make_shared<Session>(std::move(socket), context_);
+                    auto session = Session::create(std::move(socket), context_);
+//                    sessions.push_back(session);
                     // con la sessione tcp appena generata effettuo l'handshake
                     this->do_handshake(session);
 
@@ -125,7 +129,6 @@ void Server::do_accept() {
 
 void Server::do_handshake(const std::shared_ptr<Session>& session){
     std::cout << "do_handshake start" << std::endl;
-
     // effettuo l'handshake per la connessione ssl
     session->getSocket().async_handshake(
             boost::asio::ssl::stream_base::server,
@@ -146,7 +149,6 @@ void Server::do_handshake(const std::shared_ptr<Session>& session){
 }
 
 void Server::do_auth(const std::shared_ptr<Session>& session){
-    sessions.push_back(session);
     boost::asio::streambuf buf;
     boost::asio::async_read_until(
             session->getSocket(),
@@ -177,21 +179,21 @@ void Server::do_auth(const std::shared_ptr<Session>& session){
                             std::shared_lock lock(mutex_map);
                             session->setMap(synced_files[user.getUsername()]);
                             lock.unlock();
-                            session->sendOKRespAndRestart();
+                            session->sendOKRespAndRestart(session);
                         }
-                        else session->sendKORespAndClose();
+                        else session->sendKORespAndClose(session);
                     } catch(std::runtime_error& e) {
                         std::cout << e.what() << std::endl;
                         // questa eccezione è generata da un'errore sul parsing dei dati di auth o del file system,
                         // quindi chiudo la connessione dopo avere notificato il client
-                        session->sendKORespAndClose();
+                        session->sendKORespAndClose(session);
                     }
                 }
             });
 }
 
 
-Server::Server(boost::asio::io_context &io_context, unsigned short port, unsigned int max_sockets):
+Server::Server(boost::asio::io_context &io_context, unsigned short port):
         acceptor_(io_context, tcp::endpoint(tcp::v4(), port)),
         context_(boost::asio::ssl::context::tlsv13_server){
     // todo: gestire un massimo numero di conessioni

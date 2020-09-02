@@ -33,9 +33,6 @@ private:
     // struttura dati condivisa
     std::unordered_map<std::string, std::shared_ptr<std::unordered_map<std::string, std::shared_ptr<SyncedFileServer>>>> synced_files;
 
-    // struttura dati condivisa
-    std::vector<std::shared_ptr<Session>> sessions;
-
     void loadUsers();
     void saveUsername(const User& user);
     bool auth(User& user);
@@ -43,13 +40,14 @@ private:
     void create_empty_map(const std::string& username);
     void loadMap(const std::string& username);
     void loadMaps();
+
+    void do_handshake(const std::shared_ptr<Session>& session);
+
+    void do_auth(const std::shared_ptr<Session>& session);
+
 public:
-    Server(boost::asio::io_context& io_context, unsigned short port, unsigned int max_sockets);
+    Server(boost::asio::io_context& io_context, unsigned short port);
     void do_accept();
-
-    void do_handshake(const std::shared_ptr<Session> &session);
-
-    void do_auth(const std::shared_ptr<Session> &session);
 
 };
 

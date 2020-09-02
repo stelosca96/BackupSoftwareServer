@@ -9,13 +9,17 @@
 #include <boost/asio/ssl.hpp>
 #include "SyncedFileServer.h"
 #include <boost/asio/buffer.hpp>
+#include <set>
+#include <shared_mutex>
 #include "Server.h"
 using boost::asio::ip::tcp;
 typedef boost::asio::ssl::stream<tcp::socket> ssl_socket;
 
-class Session {
+class Session: public std::enable_shared_from_this<Session> {
 private:
     const static int N = 10240;
+    static std::set<std::string> subscribers_;
+    static std::shared_mutex subscribers_mutex;
     std::shared_ptr<std::unordered_map<std::string, std::shared_ptr<SyncedFileServer>>> user_map;
     ssl_socket socket_;
     std::string username;
@@ -23,15 +27,20 @@ private:
     char data_[N+1];
 
     void saveMap();
-    void sendOKRespAndRestart();
-    void sendKORespAndRestart();
-    void getFile(const std::shared_ptr<SyncedFileServer>& sfp);
+    void sendKORespAndRestart(std::shared_ptr<Session> session);
+    void sendNORespAndGetFile(std::shared_ptr<Session> self, const std::shared_ptr<SyncedFileServer>& sfp);
+    void getFile(std::shared_ptr<Session> self, const std::shared_ptr<SyncedFileServer>& sfp);
+    void getInfoFile(std::shared_ptr<Session> session);
 
     static std::string tempFilePath();
 
-    void getFileEnd(const std::shared_ptr<SyncedFileServer>& sfp, const std::string& filePath);
+    void getFileEnd(
+            std::shared_ptr<Session> self,
+            const std::shared_ptr<SyncedFileServer>& sfp,
+            const std::string& filePath);
 
     void getFileR(
+            std::shared_ptr<Session> self,
             const std::shared_ptr<SyncedFileServer>& sfp,
             std::shared_ptr<std::ofstream> file_ptr,
             const std::string& filePath,
@@ -42,23 +51,25 @@ private:
 
     void deleteFile(const std::shared_ptr<SyncedFileServer> &sfp);
 
-    void deleteFileMap(const std::shared_ptr<SyncedFileServer> &sfp);
+    void deleteFileMap(std::shared_ptr<Session> self, const std::shared_ptr<SyncedFileServer> &sfp);
+
     boost::asio::ssl::stream<tcp::socket> &getSocket();
     void clearBuffer();
 
     friend class Server;
 public:
+
+    ~Session();
+    void sendOKRespAndRestart(std::shared_ptr<Session> session);
+    void sendKORespAndClose(std::shared_ptr<Session> self);
+    void setMap(std::shared_ptr<std::unordered_map<std::string, std::shared_ptr<SyncedFileServer>>> userMap);
+    void setUsername(std::string username);
+    static bool isLogged(const std::string& username);
+    static std::shared_ptr<Session> create(tcp::socket socket, boost::asio::ssl::context &context);
     Session(
             tcp::socket socket,
             boost::asio::ssl::context& context
     );
-    ~Session();
-
-    void sendKORespAndClose();
-    void sendNORespAndGetFile(const std::shared_ptr<SyncedFileServer>& sfp);
-    void getInfoFile();
-    void setMap(std::shared_ptr<std::unordered_map<std::string, std::shared_ptr<SyncedFileServer>>> userMap);
-    void setUsername(std::string username);
 
 };
 

@@ -12,6 +12,7 @@
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/property_tree/exceptions.hpp>
 #include <boost/property_tree/json_parser/error.hpp>
+#include <utility>
 #include "Session.h"
 
 namespace pt = boost::property_tree;
@@ -34,12 +35,12 @@ Session::Session(tcp::socket socket, boost::asio::ssl::context &context):
         socket_(std::move(socket), context){
 }
 
-void Session::sendOKRespAndRestart() {
+void Session::sendOKRespAndRestart(std::shared_ptr<Session> self) {
     std::string buffer = "OK\\\n";
     boost::asio::async_write(
             socket_,
             boost::asio::buffer(buffer, buffer.size()),
-            [this](
+            [this, self](
                     const boost::system::error_code& error,
                     std::size_t bytes_transferred           // Number of bytes written from the
             ){
@@ -49,19 +50,19 @@ void Session::sendOKRespAndRestart() {
                     return;
                 }
                 if(!error){
-                    this->getInfoFile();
+                    this->getInfoFile(self);
                 }
                 // toodo: gestire errore
 //                        else this->sendKORespAndClose();
             });
 }
 
-void Session::sendKORespAndRestart() {
+void Session::sendKORespAndRestart(std::shared_ptr<Session> self) {
     std::string buffer = "KO\\\n";
     boost::asio::async_write(
             socket_,
             boost::asio::buffer(buffer, buffer.size()),
-            [this](
+            [this, self](
                     const boost::system::error_code& error,
                     std::size_t bytes_transferred           // Number of bytes written from the
             ){
@@ -71,7 +72,7 @@ void Session::sendKORespAndRestart() {
                     return;
                 }
                 if(!error){
-                    this->getInfoFile();
+                    this->getInfoFile(self);
 
                 }
                 // se l'invio del KO non va a buon fine potrei chiudere la connessione
@@ -80,25 +81,24 @@ void Session::sendKORespAndRestart() {
             });
 }
 
-void Session::sendKORespAndClose() {
+void Session::sendKORespAndClose(std::shared_ptr<Session> self) {
     std::string buffer = "KO\\\n";
+    std::cout << "sendKORespAndClose" << std::endl;
     boost::asio::async_write(
             socket_,
             boost::asio::buffer(buffer, buffer.size()),
-            [this](
+            [this, self](
                     const boost::system::error_code& error,
                     std::size_t bytes_transferred           // Number of bytes written from the
             ){
-                if(!socket_.lowest_layer().is_open()){
-                    std::cout << "connessione chiusa" << std::endl;
-                    return;
-                }
                 std::cout << "Chiudo la connessione per un errore" << std::endl;
-                socket_.lowest_layer().close();
             });
 }
 
 void Session::setUsername(std::string u) {
+    std::unique_lock lock(Session::subscribers_mutex);
+    Session::subscribers_.insert(u);
+    lock.unlock();
     this->username = std::move(u);
 }
 
@@ -136,17 +136,17 @@ void Session::deleteFile(const std::shared_ptr<SyncedFileServer>& sfp){
     std::cout << user_path << " erased" << std::endl;
 }
 
-void Session::deleteFileMap(const std::shared_ptr<SyncedFileServer>& sfp){
+void Session::deleteFileMap(std::shared_ptr<Session> self, const std::shared_ptr<SyncedFileServer>& sfp){
     std::cout << "Elimino il file " << sfp->getPath() << std::endl;
     // todo: cosa succede se la mappa non contiene il file? genera eccezioni?
     user_map->erase(sfp->getPath());
     deleteFile(sfp);
     saveMap();
-    this->sendOKRespAndRestart();
+    this->sendOKRespAndRestart(self);
     std::cout << "FILE OK" << std::endl;
 }
 
-void Session::getFileEnd(const std::shared_ptr<SyncedFileServer>& sfp, const std::string& tempPath){
+void Session::getFileEnd(std::shared_ptr<Session> self, const std::shared_ptr<SyncedFileServer>& sfp, const std::string& tempPath){
     // controllo che il file ricevuto sia quello che mi aspettavo e che non ci siano stati errori
     if(SyncedFileServer::CalcSha256(tempPath) == sfp->getHash()){
         std::cout << "sendo un ok" << std::endl;
@@ -157,7 +157,7 @@ void Session::getFileEnd(const std::shared_ptr<SyncedFileServer>& sfp, const std
         // aggiorno il valore della mappa
         (*user_map)[sfp->getPath()] = sfp;
         saveMap();
-        this->sendOKRespAndRestart();
+        this->sendOKRespAndRestart(self);
     }
         // altrimenti comunico il problema al client che gestirà l'errore
     else {
@@ -166,11 +166,12 @@ void Session::getFileEnd(const std::shared_ptr<SyncedFileServer>& sfp, const std
         std::cout << "FILE K0(" << tempPath<< "): hash errato(" << SyncedFileServer::CalcSha256(tempPath) << ')' << std::endl;
         // todo: elimino il file
         std::filesystem::remove(tempPath);
-        this->sendKORespAndRestart();
+        this->sendKORespAndRestart(self);
     }
 };
 
 void Session::getFileR(
+        std::shared_ptr<Session> self,
         const std::shared_ptr<SyncedFileServer>& sfp,
         std::shared_ptr<std::ofstream> file_ptr,
         const std::string& filePath,
@@ -178,12 +179,12 @@ void Session::getFileR(
     // il file che ricevo è già aperto, ma verifico che lo sia
     if(!file_ptr->is_open()){
         std::cout << "File not opened: " << filePath << std::endl;
-        this->sendKORespAndRestart();
+        this->sendKORespAndRestart(self);
     }
     if(sizeRead>=sfp->getFileSize()){
         std::cout << "Ho terminato il trasferimento del file" << std::endl;
         file_ptr->close();
-        this->getFileEnd(sfp, filePath);
+        this->getFileEnd(self, sfp, filePath);
         return;
     }
     std::cout << "Continuo il trasferimento del file" << std::endl;
@@ -195,7 +196,7 @@ void Session::getFileR(
     boost::asio::async_read(
             socket_,
             boost::asio::buffer(data_, buff_size),
-            [this, sfp, sizeRead, file_ptr, filePath](
+            [this, self, sfp, sizeRead, file_ptr, filePath](
                     const boost::system::error_code& error, // Result of operation.
                     std::size_t bytes_transferred           // Number of bytes copied into the buffer
             ){
@@ -210,11 +211,11 @@ void Session::getFileR(
                     // se non si sono verificati errori scrivo il file
                     data_[bytes_transferred] = '\0';
                     file_ptr->write(data_, bytes_transferred);
-                    this->getFileR(sfp, file_ptr, filePath, sizeRead+bytes_transferred);
+                    this->getFileR(self, sfp, file_ptr, filePath, sizeRead+bytes_transferred);
                 } else {
                     file_ptr->close();
                     std::filesystem::remove(filePath);
-                    this->sendKORespAndRestart();
+                    this->sendKORespAndRestart(self);
                     // altrimenti gestisco l'errore
                 }
                 // todo: gestire errore e eccezione in caso di write fallita
@@ -222,7 +223,7 @@ void Session::getFileR(
 }
 
 
-void Session::getFile(const std::shared_ptr<SyncedFileServer>& sfp){
+void Session::getFile(std::shared_ptr<Session> self, const std::shared_ptr<SyncedFileServer>& sfp){
     // creo un nome file provvisorio univoco tra tutti i thread
     std::string filePath(tempFilePath());
 
@@ -231,11 +232,11 @@ void Session::getFile(const std::shared_ptr<SyncedFileServer>& sfp){
     // todo: gestire eccezione in caso di open file fallita
 
     // avvio la callback ricorsiva
-    this->getFileR(sfp, file_ptr, filePath, 0);
+    this->getFileR(self, sfp, file_ptr, filePath, 0);
 }
 
 // richiedo il file solo se non è già presente o è diverso
-void Session::sendNORespAndGetFile(const std::shared_ptr<SyncedFileServer>& sfp) {
+void Session::sendNORespAndGetFile(std::shared_ptr<Session> self, const std::shared_ptr<SyncedFileServer>& sfp) {
     // ogni thread lavora solo in lettura sulla mappa totale e lettura e scrittura sulle figlie => la mappa figlia è usata solo da un thread per volta
     // todo: eliminare tutti i file in caso di eccezione
 
@@ -248,19 +249,19 @@ void Session::sendNORespAndGetFile(const std::shared_ptr<SyncedFileServer>& sfp)
         boost::asio::async_write(
                 socket_,
                 boost::asio::buffer(buffer, buffer.size()),
-                [this, sfp](const boost::system::error_code& error, std::size_t bytes_transferred){
+                [this, sfp, self](const boost::system::error_code& error, std::size_t bytes_transferred){
                     std::cout << "sendNORespAndGetFile: " <<  error.message() << " " << error.value() << std::endl;
 
                     if(!error){
                         std::cout << "FILE NO" << std::endl;
-                        this->getFile(sfp);
-                    } else this->sendKORespAndClose();
+                        this->getFile(self, sfp);
+                    } else this->sendKORespAndClose(self);
                 });
     }else {
         std::cout << "sendo un ok" << std::endl;
 
         // il file è già presente quindi devo solo mandare un OK
-        this->sendOKRespAndRestart();
+        this->sendOKRespAndRestart(self);
     }
 }
 
@@ -274,13 +275,13 @@ void Session::clearBuffer(){
     std::cout << "Ho svuotato il buffer " << bytes_read << std::endl;
 }
 
-void Session::getInfoFile() {
+void Session::getInfoFile(std::shared_ptr<Session> self) {
     // attendo un json con le informazioni sul file
     boost::asio::async_read_until(
             socket_,
             this->buf,
             "\\\n",
-            [this](const boost::system::error_code& error, std::size_t bytes_transferred){
+            [this, self](const boost::system::error_code& error, std::size_t bytes_transferred){
                 std::cout << "getInfoFile: " <<  error.message() << " " << error.value() << std::endl;
                 if(!error){
                     try {
@@ -293,30 +294,30 @@ void Session::getInfoFile() {
                         switch (sfp->getFileStatus()) {
                             case FileStatus::created:
                                 std::cout << "created" << std::endl;
-                                sendNORespAndGetFile(sfp);
+                                sendNORespAndGetFile(self, sfp);
                                 break;
                             case FileStatus::modified:
                                 std::cout << "modified" << std::endl;
-                                sendNORespAndGetFile(sfp);
+                                sendNORespAndGetFile(self, sfp);
                                 break;
                             case FileStatus::erased:
                                 std::cout << "erased" << std::endl;
-                                deleteFileMap(sfp);
+                                deleteFileMap(self, sfp);
                                 break;
                             case FileStatus::not_valid:
                                 std::cout << "not valid" << std::endl;
-                                this->sendKORespAndRestart();
+                                this->sendKORespAndRestart(self);
                                 break;
                         }
-                        } catch (std::runtime_error &exception) {
-                            // todo: se si verifica un errore sul filesystem forse dovrei chiudere il client anche se in questo caso l'errore può essere solo sulla delete
-                            // se si verifica un errore potrebbe essere dovuto dal filesystem o da un errore sui dati
-                            // loggo l'errore e riavvio il lavoro dopo avere mandato un KO al client
-                            std::cout << exception.what() << std::endl;
-                            this->clearBuffer();
-                            this->sendKORespAndRestart();
-                        }
-                } else this->sendOKRespAndRestart();
+                    } catch (std::runtime_error &exception) {
+                        // todo: se si verifica un errore sul filesystem forse dovrei chiudere il client anche se in questo caso l'errore può essere solo sulla delete
+                        // se si verifica un errore potrebbe essere dovuto dal filesystem o da un errore sui dati
+                        // loggo l'errore e riavvio il lavoro dopo avere mandato un KO al client
+                        std::cout << exception.what() << std::endl;
+                        this->clearBuffer();
+                        this->sendKORespAndRestart(self);
+                    }
+                } else this->sendOKRespAndRestart(self);
             });
 }
 
@@ -326,6 +327,23 @@ void Session::setMap(std::shared_ptr<std::unordered_map<std::string, std::shared
 
 Session::~Session() {
     std::cout << "Sessione distrutta" << std::endl;
+    std::unique_lock lock(Session::subscribers_mutex);
+    // todo: cosa succede se l'elemento non esiste
+    Session::subscribers_.erase(this->username);
 }
+
+std::shared_ptr<Session> Session::create(tcp::socket socket, boost::asio::ssl::context &context) {
+    return std::make_shared<Session>(std::move(socket), context);
+}
+
+bool Session::isLogged(const std::string& username) {
+    std::shared_lock lock(Session::subscribers_mutex);
+    auto it = Session::subscribers_.find(username);
+    return it!=Session::subscribers_.end();
+}
+
+
+std::set<std::string> Session::subscribers_;
+std::shared_mutex Session::subscribers_mutex;
 
 
