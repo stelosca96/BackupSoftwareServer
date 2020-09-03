@@ -30,7 +30,7 @@ private:
     void sendKORespAndRestart(std::shared_ptr<Session> session);
     void sendNORespAndGetFile(std::shared_ptr<Session> self, const std::shared_ptr<SyncedFileServer>& sfp);
     void getFile(std::shared_ptr<Session> self, const std::shared_ptr<SyncedFileServer>& sfp);
-    void getInfoFile(std::shared_ptr<Session> session);
+    void getInfoFile(const std::shared_ptr<Session>& session);
 
     static std::string tempFilePath();
 

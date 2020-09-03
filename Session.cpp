@@ -66,12 +66,13 @@ void Session::sendKORespAndRestart(std::shared_ptr<Session> self) {
                     const boost::system::error_code& error,
                     std::size_t bytes_transferred           // Number of bytes written from the
             ){
-                std::cout << "sendOKRespAndRestart: " <<  error.message() << " " << error.value() << std::endl;
+                std::cout << "sendKORespAndRestart: " <<  error.message() << " " << error.value() << std::endl;
                 if(!socket_.lowest_layer().is_open()){
                     std::cout << "connessione chiusa" << std::endl;
                     return;
                 }
                 if(!error){
+                    this->clearBuffer();
                     this->getInfoFile(self);
 
                 }
@@ -91,12 +92,15 @@ void Session::sendKORespAndClose(std::shared_ptr<Session> self) {
                     const boost::system::error_code& error,
                     std::size_t bytes_transferred           // Number of bytes written from the
             ){
+                std::cout << error.message() << std::endl;
+
                 std::cout << "Chiudo la connessione per un errore" << std::endl;
             });
 }
 
 void Session::setUsername(std::string u) {
     std::unique_lock lock(Session::subscribers_mutex);
+    std::cout << "Sessione aggiunta: " << u << std::endl;
     Session::subscribers_.insert(u);
     lock.unlock();
     this->username = std::move(u);
@@ -193,6 +197,8 @@ void Session::getFileR(
 
     // scelgo la dimensione massima del buffer
     const ssize_t buff_size = size_left<N ? size_left: N;
+    std::cout << "buff_size: " <<  buff_size << std::endl;
+
     boost::asio::async_read(
             socket_,
             boost::asio::buffer(data_, buff_size),
@@ -202,6 +208,7 @@ void Session::getFileR(
             ){
 
                 std::cout << "getFileR: " <<  error.message() << " " << error.value() << std::endl;
+                std::cout << "sock: " <<  socket_.lowest_layer().is_open() << std::endl;
 
                 if(!file_ptr->is_open()){
                     std::cout << "File not opened: " << filePath << std::endl;
@@ -214,12 +221,14 @@ void Session::getFileR(
                     this->getFileR(self, sfp, file_ptr, filePath, sizeRead+bytes_transferred);
                 } else {
                     file_ptr->close();
+                    std::cout << "Errore getFileR" << std::endl;
+
                     std::filesystem::remove(filePath);
                     this->sendKORespAndRestart(self);
                     // altrimenti gestisco l'errore
                 }
-                // todo: gestire errore e eccezione in caso di write fallita
             });
+
 }
 
 
@@ -270,13 +279,20 @@ void Session::clearBuffer(){
     socket_.lowest_layer().io_control(command);
     std::size_t bytes_readable = command.get();
     std::cout << "Il buffer contiene " << bytes_readable << "bytes" << std::endl;
-    std::string data;
-    ssize_t bytes_read = boost::asio::read(socket_, boost::asio::buffer(data, bytes_readable));
-    std::cout << "Ho svuotato il buffer " << bytes_read << std::endl;
+    if(bytes_readable){
+        boost::system::error_code ec;
+        // todo: non funziona la read, il buffer non si svuota
+        ssize_t bytes_read = boost::asio::read(socket_,boost::asio::buffer(data_, bytes_readable),ec);
+        // ignoro gli errori
+        std::cout << ec.message() << std::endl;
+        std::cout << "Ho svuotato il buffer " << bytes_read << std::endl;
+    }
 }
 
-void Session::getInfoFile(std::shared_ptr<Session> self) {
+void Session::getInfoFile(const std::shared_ptr<Session>& self) {
     // attendo un json con le informazioni sul file
+//    std::cout << "Attendo 40" << std::endl;
+//    sleep(40);
     boost::asio::async_read_until(
             socket_,
             this->buf,
@@ -314,7 +330,7 @@ void Session::getInfoFile(std::shared_ptr<Session> self) {
                         // se si verifica un errore potrebbe essere dovuto dal filesystem o da un errore sui dati
                         // loggo l'errore e riavvio il lavoro dopo avere mandato un KO al client
                         std::cout << exception.what() << std::endl;
-                        this->clearBuffer();
+//                        this->clearBuffer();
                         this->sendKORespAndRestart(self);
                     }
                 } else this->sendOKRespAndRestart(self);
@@ -326,7 +342,7 @@ void Session::setMap(std::shared_ptr<std::unordered_map<std::string, std::shared
 }
 
 Session::~Session() {
-    std::cout << "Sessione distrutta" << std::endl;
+    std::cout << "Sessione distrutta " << this->username << std::endl;
     std::unique_lock lock(Session::subscribers_mutex);
     // todo: cosa succede se l'elemento non esiste
     Session::subscribers_.erase(this->username);
@@ -339,6 +355,8 @@ std::shared_ptr<Session> Session::create(tcp::socket socket, boost::asio::ssl::c
 bool Session::isLogged(const std::string& username) {
     std::shared_lock lock(Session::subscribers_mutex);
     auto it = Session::subscribers_.find(username);
+    std::string l = it!=Session::subscribers_.end()? "true": "false";
+    std::cout << username << " logged? " <<  l << std::endl;
     return it!=Session::subscribers_.end();
 }
 
