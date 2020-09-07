@@ -149,7 +149,6 @@ void Server::do_handshake(const std::shared_ptr<Session>& session){
 }
 
 void Server::do_auth(const std::shared_ptr<Session>& session){
-    boost::asio::streambuf buf;
     boost::asio::async_read_until(
             session->getSocket(),
             session->buf,

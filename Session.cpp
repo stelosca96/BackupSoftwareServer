@@ -191,13 +191,13 @@ void Session::getFileR(
         this->getFileEnd(self, sfp, filePath);
         return;
     }
-    std::cout << "Continuo il trasferimento del file" << std::endl;
+//    std::cout << "Continuo il trasferimento del file" << std::endl;
     const ssize_t size_left = sfp->getFileSize()-sizeRead;
-    std::cout << "size_left: " <<  size_left << std::endl;
+//    std::cout << "size_left: " <<  size_left << std::endl;
 
     // scelgo la dimensione massima del buffer
     const ssize_t buff_size = size_left<N ? size_left: N;
-    std::cout << "buff_size: " <<  buff_size << std::endl;
+//    std::cout << "buff_size: " <<  buff_size << std::endl;
 
     boost::asio::async_read(
             socket_,
@@ -207,19 +207,20 @@ void Session::getFileR(
                     std::size_t bytes_transferred           // Number of bytes copied into the buffer
             ){
 
-                std::cout << "getFileR: " <<  error.message() << " " << error.value() << std::endl;
-                std::cout << "sock: " <<  socket_.lowest_layer().is_open() << std::endl;
+//                std::cout << "getFileR: " <<  error.message() << " " << error.value() << std::endl;
+//                std::cout << "sock: " <<  socket_.lowest_layer().is_open() << std::endl;
 
                 if(!file_ptr->is_open()){
                     std::cout << "File not opened: " << filePath << std::endl;
                 }
                 if(!error){
-                    std::cout << "bytes_transferred: " <<  bytes_transferred << std::endl;
+//                    std::cout << "bytes_transferred: " <<  bytes_transferred << std::endl;
                     // se non si sono verificati errori scrivo il file
                     data_[bytes_transferred] = '\0';
                     file_ptr->write(data_, bytes_transferred);
                     this->getFileR(self, sfp, file_ptr, filePath, sizeRead+bytes_transferred);
                 } else {
+                    data_[bytes_transferred] = '\0';
                     file_ptr->close();
                     std::cout << "Errore getFileR" << std::endl;
 
@@ -293,6 +294,9 @@ void Session::getInfoFile(const std::shared_ptr<Session>& self) {
     // attendo un json con le informazioni sul file
 //    std::cout << "Attendo 40" << std::endl;
 //    sleep(40);
+    std::string data = boost::asio::buffer_cast<const char*>(this->buf.data());
+    std::cout << "Buffer: " << data << std::endl;
+    this->buf.consume(this->buf.data().size());
     boost::asio::async_read_until(
             socket_,
             this->buf,

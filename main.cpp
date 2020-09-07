@@ -22,7 +22,7 @@ namespace pt = boost::property_tree;
 using boost::asio::ip::tcp;
 using boost::asio::deadline_timer;
 
-static const int max_thread = 2;
+static const int max_thread = 1;
 
 // todo: gestire eccezioni errori
 // todo: file config (max_threads, port)
@@ -34,11 +34,11 @@ int main() {
     Server server(io_service, 9999);
     server.do_accept();
     std::vector<std::thread> threads;
-    threads.reserve(max_thread-1);
-    for(int i=0; i<max_thread-1; i++)
-        threads.emplace_back(std::thread(
-                [&io_service](){
-                    io_service.run();
-                }));
+//    threads.reserve(max_thread-1);
+//    for(int i=0; i<max_thread-1; i++)
+//        threads.emplace_back(std::thread(
+//                [&io_service](){
+//                    io_service.run();
+//                }));
     io_service.run();
 }
