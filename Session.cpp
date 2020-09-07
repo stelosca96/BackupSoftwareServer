@@ -27,12 +27,12 @@ void Session::saveMap(){
     pt::json_parser::write_json("synced_maps/" + username + ".json", pt);
 }
 
-boost::asio::ssl::stream<tcp::socket> &Session::getSocket(){
+tcp::socket &Session::getSocket(){
     return socket_;
 }
 
-Session::Session(tcp::socket socket, boost::asio::ssl::context &context):
-        socket_(std::move(socket), context){
+Session::Session(tcp::socket socket):
+        socket_(std::move(socket)){
 }
 
 void Session::sendOKRespAndRestart(std::shared_ptr<Session> self) {
@@ -44,7 +44,7 @@ void Session::sendOKRespAndRestart(std::shared_ptr<Session> self) {
                     const boost::system::error_code& error,
                     std::size_t bytes_transferred           // Number of bytes written from the
             ){
-                std::cout << "sendOKRespAndRestart: " <<  error.message()<< " " << error.value()  << std::endl;
+                std::cout << "sendOKRespAndRestart: " <<  error.message()<< " " << error.value()  << " " << bytes_transferred <<std::endl;
                 if(!socket_.lowest_layer().is_open()){
                     std::cout << "connessione chiusa" << std::endl;
                     return;
@@ -352,8 +352,8 @@ Session::~Session() {
     Session::subscribers_.erase(this->username);
 }
 
-std::shared_ptr<Session> Session::create(tcp::socket socket, boost::asio::ssl::context &context) {
-    return std::make_shared<Session>(std::move(socket), context);
+std::shared_ptr<Session> Session::create(tcp::socket socket) {
+    return std::make_shared<Session>(std::move(socket));
 }
 
 bool Session::isLogged(const std::string& username) {

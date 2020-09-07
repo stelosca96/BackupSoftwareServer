@@ -21,7 +21,7 @@ private:
     static std::set<std::string> subscribers_;
     static std::shared_mutex subscribers_mutex;
     std::shared_ptr<std::unordered_map<std::string, std::shared_ptr<SyncedFileServer>>> user_map;
-    ssl_socket socket_;
+    tcp::socket socket_;
     std::string username;
     boost::asio::streambuf buf;
     char data_[N+1];
@@ -53,7 +53,7 @@ private:
 
     void deleteFileMap(std::shared_ptr<Session> self, const std::shared_ptr<SyncedFileServer> &sfp);
 
-    boost::asio::ssl::stream<tcp::socket> &getSocket();
+    tcp::socket &getSocket();
     void clearBuffer();
 
     friend class Server;
@@ -65,10 +65,9 @@ public:
     void setMap(std::shared_ptr<std::unordered_map<std::string, std::shared_ptr<SyncedFileServer>>> userMap);
     void setUsername(std::string username);
     static bool isLogged(const std::string& username);
-    static std::shared_ptr<Session> create(tcp::socket socket, boost::asio::ssl::context &context);
+    static std::shared_ptr<Session> create(tcp::socket socket);
     Session(
-            tcp::socket socket,
-            boost::asio::ssl::context& context
+            tcp::socket socket
     );
 
 };

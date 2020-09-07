@@ -115,10 +115,10 @@ void Server::do_accept() {
                     return;
                 }
                 if (!error){
-                    auto session = Session::create(std::move(socket), context_);
+                    auto session = Session::create(std::move(socket));
 //                    sessions.push_back(session);
                     // con la sessione tcp appena generata effettuo l'handshake
-                    this->do_handshake(session);
+                    this->do_auth(session);
 
                     // e mi rimetto in ascolto per l'accept
                     this->do_accept();
@@ -127,26 +127,26 @@ void Server::do_accept() {
             });
 }
 
-void Server::do_handshake(const std::shared_ptr<Session>& session){
-    std::cout << "do_handshake start" << std::endl;
-    // effettuo l'handshake per la connessione ssl
-    session->getSocket().async_handshake(
-            boost::asio::ssl::stream_base::server,
-            [this, session](const boost::system::error_code& error){
-                std::cout << "do_handshake: " <<  error.message() << std::endl;
-                if(!session->getSocket().lowest_layer().is_open()){
-                    // se la connesione è stata chiusa dal client termino il lavoro
-                    std::cout << "connessione chiusa" << std::endl;
-                    return;
-                }
-                if(!error){
-                    // se l'handshake va a uon fine
-                    this->do_auth(session);
-                }
-                // se l'handshake non va a bon fine la sesione tcp verrà chiusa
-            }
-    );
-}
+//void Server::do_handshake(const std::shared_ptr<Session>& session){
+//    std::cout << "do_handshake start" << std::endl;
+//    // effettuo l'handshake per la connessione ssl
+//    session->getSocket().async_handshake(
+//            boost::asio::ssl::stream_base::server,
+//            [this, session](const boost::system::error_code& error){
+//                std::cout << "do_handshake: " <<  error.message() << std::endl;
+//                if(!session->getSocket().lowest_layer().is_open()){
+//                    // se la connesione è stata chiusa dal client termino il lavoro
+//                    std::cout << "connessione chiusa" << std::endl;
+//                    return;
+//                }
+//                if(!error){
+//                    // se l'handshake va a uon fine
+//                    this->do_auth(session);
+//                }
+//                // se l'handshake non va a bon fine la sesione tcp verrà chiusa
+//            }
+//    );
+//}
 
 void Server::do_auth(const std::shared_ptr<Session>& session){
     boost::asio::async_read_until(
@@ -193,20 +193,8 @@ void Server::do_auth(const std::shared_ptr<Session>& session){
 
 
 Server::Server(boost::asio::io_context &io_context, unsigned short port):
-        acceptor_(io_context, tcp::endpoint(tcp::v4(), port)),
-        context_(boost::asio::ssl::context::tlsv13_server){
+        acceptor_(io_context, tcp::endpoint(tcp::v4(), port)){
     // todo: gestire un massimo numero di conessioni
-    // uso tls 1.3, vieto ssl2 e 3, dh per generare una key va rieffettuato ad ogni connessione, Implement various bug workarounds.
-    context_.set_options(
-            boost::asio::ssl::context::default_workarounds
-            | boost::asio::ssl::context::no_sslv3
-            | boost::asio::ssl::context::no_sslv2
-            | boost::asio::ssl::context::single_dh_use);
-    context_.set_password_callback(std::bind(&Server::get_password, this));
-    context_.use_certificate_chain_file("../cert/user.crt");
-    context_.use_private_key_file("../cert/user.key", boost::asio::ssl::context::pem);
-    context_.use_tmp_dh_file("../cert/dh2048.pem");
-
     try {
         loadUsers();
         try {

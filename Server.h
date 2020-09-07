@@ -18,7 +18,6 @@ using boost::asio::ip::tcp;
 class Server{
 private:
     tcp::acceptor acceptor_;
-    boost::asio::ssl::context context_;
 
     const std::string file_users = "users_list.conf";
     const std::string cert_password = "ciao12345";
