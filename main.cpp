@@ -41,6 +41,7 @@ int main() {
     } catch (std::runtime_error &error) {
         std::cerr << "Errore caricamento file configurazione" << std::endl;
         std::cerr << error.what() << std::endl;
+        exit(-1);
     }
     boost::asio::io_service io_service;
     Server server(io_service, port, crt, key, crtPsw, dhTemp);
