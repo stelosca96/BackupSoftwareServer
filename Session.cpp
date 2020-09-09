@@ -295,8 +295,8 @@ void Session::getInfoFile(const std::shared_ptr<Session>& self) {
 //    std::cout << "Attendo 40" << std::endl;
 //    sleep(40);
     std::string data = boost::asio::buffer_cast<const char*>(this->buf.data());
-    std::cout << "Buffer: " << data << std::endl;
-    this->buf.consume(this->buf.data().size());
+//    std::cout << "Buffer: " << data << std::endl;
+//    this->buf.consume(this->buf.data().size());
     boost::asio::async_read_until(
             socket_,
             this->buf,

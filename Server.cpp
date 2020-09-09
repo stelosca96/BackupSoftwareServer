@@ -192,9 +192,16 @@ void Server::do_auth(const std::shared_ptr<Session>& session){
 }
 
 
-Server::Server(boost::asio::io_context &io_context, unsigned short port):
+Server::Server(
+        boost::asio::io_context &io_context,
+        unsigned short port,
+        const std::string& crt,
+        const std::string& key,
+        std::string cert_password,
+        const std::string& dhTmp):
         acceptor_(io_context, tcp::endpoint(tcp::v4(), port)),
-        context_(boost::asio::ssl::context::tlsv13_server){
+        context_(boost::asio::ssl::context::tlsv13_server),
+        cert_password(std::move(cert_password)){
     // todo: gestire un massimo numero di conessioni
     // uso tls 1.3, vieto ssl2 e 3, dh per generare una key va rieffettuato ad ogni connessione, Implement various bug workarounds.
     context_.set_options(
@@ -203,9 +210,9 @@ Server::Server(boost::asio::io_context &io_context, unsigned short port):
             | boost::asio::ssl::context::no_sslv2
             | boost::asio::ssl::context::single_dh_use);
     context_.set_password_callback(std::bind(&Server::get_password, this));
-    context_.use_certificate_chain_file("../cert/user.crt");
-    context_.use_private_key_file("../cert/user.key", boost::asio::ssl::context::pem);
-    context_.use_tmp_dh_file("../cert/dh2048.pem");
+    context_.use_certificate_chain_file(crt);
+    context_.use_private_key_file(key, boost::asio::ssl::context::pem);
+    context_.use_tmp_dh_file(dhTmp);
 
     try {
         loadUsers();
