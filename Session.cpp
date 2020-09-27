@@ -31,7 +31,7 @@ boost::asio::ssl::stream<tcp::socket> &Session::getSocket(){
     return socket_;
 }
 
-Session::Session(tcp::socket socket, boost::asio::ssl::context &context):
+Session::Session(tcp::socket socket, boost::asio::ssl::context &context): waitMode(true) ,
         socket_(std::move(socket), context){
 }
 
@@ -50,7 +50,19 @@ void Session::sendOKRespAndRestart(std::shared_ptr<Session> self) {
                     return;
                 }
                 if(!error){
-                    this->getInfoFile(self);
+                    if(waitMode)
+                        this->getMode(self);
+                    else{
+                        switch (this->mode) {
+                            case ProtocolMode::BACK :
+                                this->getInfoFile(self);
+                                break;
+                            case ProtocolMode::SYNC :
+                                //this->sendInfoFile(self);
+                                break;
+                        }
+                    }
+
                 }
                 // toodo: gestire errore
 //                        else this->sendKORespAndClose();
@@ -362,6 +374,50 @@ bool Session::isLogged(const std::string& username) {
     std::string l = it!=Session::subscribers_.end()? "true": "false";
     std::cout << username << " logged? " <<  l << std::endl;
     return it!=Session::subscribers_.end();
+}
+
+void Session::getMode(std::shared_ptr<Session> session) {
+    boost::asio::async_read_until(
+            this->getSocket(),
+            this->buf,
+            "\\\n",
+            [this, session](
+                    const boost::system::error_code& error,
+                    std::size_t bytes_transferred           // Number of bytes written from the client
+            ){
+                std::cout << "getMode: " <<  error.message() << std::endl;
+                if(!session->getSocket().lowest_layer().is_open()){
+                    std::cout << "connessione chiusa" << std::endl;
+                    return;
+                }
+                if(!error){
+                    try {
+                        std::string data = boost::asio::buffer_cast<const char*>(session->buf.data());
+                        session->buf.consume(bytes_transferred);
+                        // rimuovo i terminatori quindi gli ultimi due caratteri
+                        std::string mode_r = data.substr(0, bytes_transferred-2);
+                        std::cout << data << "size: " << bytes_transferred << std::endl;
+                        if(mode_r == "MODE_BACK"){
+                            this->waitMode = false;
+                            this->mode = ProtocolMode::BACK;
+                            this->sendOKRespAndRestart(session);
+                        }
+                        else if(mode_r == "MODE_SYNC") {
+                            this->waitMode = false;
+                            this->mode = ProtocolMode::SYNC;
+                            this->sendOKRespAndRestart(session);
+                        }
+                        else{
+                            this->sendKORespAndClose(session);
+                        }
+                    } catch(std::runtime_error& e) {
+                        std::cout << e.what() << std::endl;
+                        // questa eccezione è generata da un'errore sul parsing dei dati di auth o del file system,
+                        // quindi chiudo la connessione dopo avere notificato il client
+                        this->sendKORespAndClose(session);
+                    }
+                }
+            });
 }
 
 

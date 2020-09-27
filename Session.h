@@ -12,6 +12,7 @@
 #include <set>
 #include <shared_mutex>
 #include "Server.h"
+#include "protocolMode.h"
 using boost::asio::ip::tcp;
 typedef boost::asio::ssl::stream<tcp::socket> ssl_socket;
 
@@ -25,6 +26,8 @@ private:
     std::string username;
     boost::asio::streambuf buf;
     char data_[N+1];
+    bool waitMode;
+    ProtocolMode mode;
 
     void saveMap();
     void sendKORespAndRestart(std::shared_ptr<Session> session);
@@ -55,6 +58,7 @@ private:
 
     boost::asio::ssl::stream<tcp::socket> &getSocket();
     void clearBuffer();
+    void getMode(std::shared_ptr<Session> session);
 
     friend class Server;
 public:
