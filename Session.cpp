@@ -58,7 +58,7 @@ void Session::sendOKRespAndRestart(std::shared_ptr<Session> self) {
                             this->getInfoFile(self);
                             break;
                         case ProtocolMode::SYNC :
-                            //this->sendInfoFile(self);
+                            this->sendInfoFile(self);
                             break;
                     }
 
@@ -417,6 +417,158 @@ void Session::getMode(std::shared_ptr<Session> session) {
             });
 }
 
+void Session::sendInfoFile(std::shared_ptr<Session> session){
+    if(session->user_map->empty()){
+        // se non ha file da mandare chiudere la connessione
+        // todo: dovrebbe forse inviare END per far capire che non ci sono file da inviare?!
+        sendEndRestoreAndClose(session);
+        //sendKORespAndClose(session);
+    }
+    this->next_file = session->user_map->begin();
+    this->sendJSONFileR(session);
+}
+
+void Session::sendJSONFileR(std::shared_ptr<Session> session){
+    // se il next_file è arrivato alla fine della mappa termina;
+    auto& file_iterator = session->next_file;
+    if(file_iterator == session->user_map->end()) {
+        this->sendEndRestoreAndClose(session);
+        return;
+    }
+
+    // se il synced file non è un regular file, passa avanti;
+    if(!file_iterator->second->isFile()){
+        this->next_file++;
+        sendJSONFileR(session);
+    }
+
+    std::string buffer = file_iterator->second->getJSON() + "\\\n";
+
+    boost::asio::async_write(socket_, boost::asio::buffer(buffer),
+                             [this, session](const boost::system::error_code& error,
+                                 std::size_t size)
+     {
+         std::cout << "sendJSONFileR: " <<  error.message() << " " << error.value()  << std::endl;
+         if(!socket_.lowest_layer().is_open()){
+             std::cout << "connessione chiusa" << std::endl;
+             return;
+         }
+        if(!error){//&& size == buffer.length()){
+            this->getResp(session);
+        }else{
+            //todo: gestire eccezioni per infoFile
+        }
+     });
+
+}
+
+void Session::getResp(std::shared_ptr<Session> session) {
+    boost::asio::async_read_until(
+            this->getSocket(),
+            this->buf,
+            "\\\n",
+            [this, session](
+                    const boost::system::error_code& error,
+                    std::size_t bytes_transferred           // Number of bytes written from the client
+            ){
+                std::cout << "getResp: " <<  error.message() << std::endl;
+                if(!session->getSocket().lowest_layer().is_open()){
+                    std::cout << "connessione chiusa" << std::endl;
+                    return;
+                }
+                if(!error){
+                    try {
+                        std::string data = boost::asio::buffer_cast<const char*>(session->buf.data());
+                        session->buf.consume(bytes_transferred);
+                        // rimuovo i terminatori quindi gli ultimi due caratteri
+                        std::string resp = data.substr(0, bytes_transferred-2);
+                        std::cout << data << "size: " << bytes_transferred << std::endl;
+
+                        //Il client ha ricevuto il JSON, e non ha bisogno del file corrente, quindi passa al prossimo
+                        //Oppure il file ha ricevuto correttamente il file binario e quindi passa al prossimo
+                        if(resp == "OK"){
+                            this->next_file++;
+                            this->sendJSONFileR(session);
+                        }
+
+                        //Il client non possiede il file e quindi si provvede all'invio del binario
+                        // oppure ci sono stati errori di trasmissione e quindi si riprova ad inviarlo.
+                        // todo: dovrebbe esserci forse un limite di retry
+                        else if(resp == "NO" || "KO") {
+                            this->sendBinaryFile(session);
+                        }
+                        else{
+                            this->sendKORespAndClose(session);
+                        }
+                    } catch(std::runtime_error& e) {
+                        std::cout << e.what() << std::endl;
+                        // questa eccezione è generata da un'errore sul parsing dei dati di auth o del file system,
+                        // quindi chiudo la connessione dopo avere notificato il client
+                        this->sendKORespAndClose(session);
+                    }
+                }
+            });
+}
+
+void Session::sendBinaryFile(std::shared_ptr<Session> session){
+    //a questo punto dovrebbe essere sicuro che il synced file sia un regular file in quanto testato su sendJSON
+    auto& file = session->next_file->second;
+    std::filesystem::path file_path("./users_files/");
+    file_path += username;
+    file_path += std::filesystem::path(file->getPath());
+    sendBinaryFileR(session, std::make_shared<std::ifstream>(file_path, std::ios::binary));
+}
+
+void Session::sendBinaryFileR(std::shared_ptr<Session> session, std::shared_ptr<std::ifstream> file_to_send){
+    char buffer[N];
+    file_to_send->read(buffer, sizeof(char)*N);
+    size_t byte_to_write = file_to_send->gcount();
+
+    //Se ha finito di leggere il file, aspetta risposta:
+    if(byte_to_write <= 0) {
+        std::cout<<"INVIO COMPLETATO: " << next_file->first << std::endl;
+        file_to_send->close();
+        this->getResp(session);
+        return;
+    }
+
+
+    boost::asio::async_write(socket_, boost::asio::buffer(buffer, byte_to_write),
+                             [&, session, file_to_send](const boost::system::error_code& error,
+                                 std::size_t size)
+                             {
+                                 std::cout << "sendBinaryFileR: " <<  error.message() << " " << error.value()  << std::endl;
+                                 if(!socket_.lowest_layer().is_open()){
+                                     std::cout << "connessione chiusa" << std::endl;
+                                     return;
+                                 }
+                                 if(!error){
+
+                                     //Continua ad inviare fino ad esaurimento byte
+                                     this->sendBinaryFileR(session, file_to_send);
+
+                                 }else{
+                                     //todo: gestire eccezioni per sendBinaryFileR
+                                 }
+                             });
+
+}
+
+void Session::sendEndRestoreAndClose(std::shared_ptr<Session> session) {
+    std::string buffer = "END\\\n";
+    std::cout << "sendEndRestoreAndClose" << std::endl;
+    boost::asio::async_write(
+            socket_,
+            boost::asio::buffer(buffer, buffer.length()),
+            [&](
+                    const boost::system::error_code& error,
+                    std::size_t bytes_transferred           // Number of bytes written from the
+            ){
+                std::cout << error.message() << std::endl;
+
+                std::cout << "Chiudo connessione perchè terminato il restore dei file" << std::endl;
+            });
+}
 
 std::set<std::string> Session::subscribers_;
 std::shared_mutex Session::subscribers_mutex;

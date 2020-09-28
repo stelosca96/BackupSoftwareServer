@@ -27,6 +27,7 @@ private:
     boost::asio::streambuf buf;
     char data_[N+1];
     ProtocolMode mode;
+    std::unordered_map<std::string, std::shared_ptr<SyncedFileServer>>::iterator next_file;
 
     void saveMap();
     void sendKORespAndRestart(std::shared_ptr<Session> session);
@@ -34,6 +35,12 @@ private:
     void getFile(std::shared_ptr<Session> self, const std::shared_ptr<SyncedFileServer>& sfp);
     void getInfoFile(const std::shared_ptr<Session>& session);
 
+    void sendInfoFile(std::shared_ptr<Session> session);
+    void sendJSONFileR(std::shared_ptr<Session> session);
+    void getResp(std::shared_ptr<Session> session);
+    void sendBinaryFile(std::shared_ptr<Session> session);
+    void sendBinaryFileR(std::shared_ptr<Session> session, std::shared_ptr<std::ifstream> file_to_send);
+    void sendEndRestoreAndClose(std::shared_ptr<Session> session);
     static std::string tempFilePath();
 
     void getFileEnd(
@@ -49,6 +56,7 @@ private:
             ssize_t sizeRead
     );
 
+
     void moveFile(const std::shared_ptr<SyncedFileServer> &sfp, const std::string &tempPath);
 
     void deleteFile(const std::shared_ptr<SyncedFileServer> &sfp);
@@ -58,6 +66,7 @@ private:
     boost::asio::ssl::stream<tcp::socket> &getSocket();
     void clearBuffer();
     void getMode(std::shared_ptr<Session> session);
+
 
     friend class Server;
 public:
