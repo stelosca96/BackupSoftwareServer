@@ -31,8 +31,8 @@ boost::asio::ssl::stream<tcp::socket> &Session::getSocket(){
     return socket_;
 }
 
-Session::Session(tcp::socket socket, boost::asio::ssl::context &context): waitMode(true) ,
-        socket_(std::move(socket), context){
+Session::Session(tcp::socket socket, boost::asio::ssl::context &context):
+socket_(std::move(socket), context), mode(ProtocolMode::UNDEFINED){
 }
 
 void Session::sendOKRespAndRestart(std::shared_ptr<Session> self) {
@@ -50,17 +50,16 @@ void Session::sendOKRespAndRestart(std::shared_ptr<Session> self) {
                     return;
                 }
                 if(!error){
-                    if(waitMode)
-                        this->getMode(self);
-                    else{
-                        switch (this->mode) {
-                            case ProtocolMode::BACK :
-                                this->getInfoFile(self);
-                                break;
-                            case ProtocolMode::SYNC :
-                                //this->sendInfoFile(self);
-                                break;
-                        }
+                    switch (this->mode) {
+                        case ProtocolMode::UNDEFINED :
+                            this->getMode(self);
+                            break;
+                        case ProtocolMode::BACK :
+                            this->getInfoFile(self);
+                            break;
+                        case ProtocolMode::SYNC :
+                            //this->sendInfoFile(self);
+                            break;
                     }
 
                 }
@@ -398,12 +397,10 @@ void Session::getMode(std::shared_ptr<Session> session) {
                         std::string mode_r = data.substr(0, bytes_transferred-2);
                         std::cout << data << "size: " << bytes_transferred << std::endl;
                         if(mode_r == "MODE_BACK"){
-                            this->waitMode = false;
                             this->mode = ProtocolMode::BACK;
                             this->sendOKRespAndRestart(session);
                         }
                         else if(mode_r == "MODE_SYNC") {
-                            this->waitMode = false;
                             this->mode = ProtocolMode::SYNC;
                             this->sendOKRespAndRestart(session);
                         }

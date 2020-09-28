@@ -26,7 +26,6 @@ private:
     std::string username;
     boost::asio::streambuf buf;
     char data_[N+1];
-    bool waitMode;
     ProtocolMode mode;
 
     void saveMap();
