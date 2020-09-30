@@ -22,8 +22,6 @@ namespace pt = boost::property_tree;
 using boost::asio::ip::tcp;
 using boost::asio::deadline_timer;
 
-// todo: gestire eccezioni errori
-// todo: file config (max_threads, port)
 int main() {
     std::string crt, key, dhTemp, crtPsw;
     int max_threads, port;

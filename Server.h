@@ -22,8 +22,7 @@ private:
 
     const std::string file_users = "users_list.conf";
     const std::string cert_password;
-    // todo: non permettere nomi che contengano caratteri speciali non possibili su windows
-    std::vector<char> forbiddenChars = {' ', '/', '\\'};
+    std::vector<char> forbiddenChars = {' ', '/', '\\', '.', '"', '[', ']', ':', ',', ';', '|', '=', '\n'};
     std::shared_mutex mutex_map;
     std::mutex mutex_users;
 

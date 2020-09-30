@@ -19,6 +19,7 @@ typedef boost::asio::ssl::stream<tcp::socket> ssl_socket;
 class Session: public std::enable_shared_from_this<Session> {
 private:
     const static int N = 10240;
+    unsigned retry_count;
     static std::set<std::string> subscribers_;
     static std::shared_mutex subscribers_mutex;
     std::shared_ptr<std::unordered_map<std::string, std::shared_ptr<SyncedFileServer>>> user_map;

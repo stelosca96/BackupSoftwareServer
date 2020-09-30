@@ -29,7 +29,6 @@ void Server::loadUsers(){
 void Server::saveUsername(const User& user){
     // il salvataggio degli utenti è gestito solo dal thread principale quindi non ho bisogno di sincronizzazione
     std::cout << "Save user" << std::endl;
-    // todo: gestire eccezione
     std::ofstream outfile;
     outfile.open(file_users, std::ios_base::app); // append instead of overwrite
     outfile << user.getUsername() << ' ' << user.getHashedPassword() << ' ' << user.getSalt() << std::endl;
@@ -47,7 +46,6 @@ void Server::loadMap(const std::string& username){
     std::shared_lock lock(mutex_map);
     auto user_map = synced_files.find(username)->second;
     lock.unlock();
-    // todo: gestire eccezioni
     pt::ptree root;
     pt::read_json("synced_maps/" + username + ".json", root);
 //    std::cout << "File loaded for " << username << ':' << std::endl;
@@ -66,6 +64,14 @@ void Server::loadMaps(){
         try {
             loadMap(key);
         } catch (std::runtime_error &error) {
+            // se il server non trova la mappa per in utente,
+            // eliminina la rispettiva cartella dei files
+            std::error_code ec;
+            std::filesystem::path user_path("./users_files/");
+            user_path += key;
+            std::filesystem::remove_all(user_path, ec);
+            if (ec.value())
+                std::cout << ec.message() << std::endl;
             // se non riesco a caricare la mappa per un utente, quando il client noterà
             // un cambiamento un file, il server se lo farà rinviare anche se già presente,
             // considerandolo come non presente
@@ -168,13 +174,12 @@ void Server::do_auth(const std::shared_ptr<Session>& session){
                         session->buf.consume(bytes_transferred);
                         // rimuovo i terminatori quindi gli ultimi due caratteri
                         std::string json = data.substr(0, data.length()-2);
-                        std::cout << data << "size: " << bytes_transferred << std::endl;
+//                        std::cout << data << "size: " << bytes_transferred << std::endl;
 
                         // creo un oggetto user a partire dal json ed effettuo l'autenticazione
                         User user(json);
                         if(auth(user)){
                             session->setUsername(user.getUsername());
-                            // todo: devo mantenere un lista aggiornata con lo stato delle sessioni tcp aperte
                             std::shared_lock lock(mutex_map);
                             session->setMap(synced_files[user.getUsername()]);
                             lock.unlock();
@@ -202,7 +207,6 @@ Server::Server(
         acceptor_(io_context, tcp::endpoint(tcp::v4(), port)),
         context_(boost::asio::ssl::context::tlsv13_server),
         cert_password(std::move(cert_password)){
-    // todo: gestire un massimo numero di conessioni
     // uso tls 1.3, vieto ssl2 e 3, dh per generare una key va rieffettuato ad ogni connessione, Implement various bug workarounds.
     context_.set_options(
             boost::asio::ssl::context::default_workarounds
@@ -220,12 +224,24 @@ Server::Server(
             loadMaps();
         } catch (filesystemException &exception) {
             // todo: se si verifica un errore durante la lettura devo partire da una mappa vuota e aprire un nuovo file
+            // todo: cancellare il file della mappa se presente?
             // cosa succede se l'utente è presente e la mappa no? penso nulla di grave, lo notifica solamente
             std::cout << exception.what() << std::endl;
         }
     } catch (filesystemException &exception) {
         //se si verifica un errore durante la lettura devo partire da una mappa vuota e aprire un nuovo file
         std::cout << exception.what() << std::endl;
+
+        // e cancelo i files dei vecchi utenti
+        std::error_code ec;
+        std::filesystem::path user_files("./users_files/");
+        std::filesystem::path user_maps("./synced_maps/");
+        std::filesystem::remove_all(user_files, ec);
+        if (ec.value())
+            std::cout << ec.message() << std::endl;
+        std::filesystem::remove_all(user_maps, ec);
+        if (ec.value())
+            std::cout << ec.message() << std::endl;
     }
 }
 
