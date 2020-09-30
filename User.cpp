@@ -54,6 +54,9 @@ std::string User::getHash(const std::string& password){
 const std::string &User::getUsername() const {
     return username;
 }
+const std::string &User::getPassword() const {
+    return password;
+}
 
 User::User():username(""), salt(""), hash("") {}
 

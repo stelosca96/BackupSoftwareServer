@@ -26,6 +26,7 @@ public:
     User(const User &user);
 
     [[nodiscard]] const std::string &getUsername() const;
+    [[nodiscard]] const std::string &getPassword() const;
     [[nodiscard]] const std::string &getHashedPassword() const;
     [[nodiscard]] const std::string &getSalt() const;
 

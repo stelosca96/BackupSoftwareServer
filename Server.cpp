@@ -89,6 +89,13 @@ bool Server::auth(User& user){
         // l'username deve essere lungo almeno 3 caratteri
         if(user.getUsername().length()<3)
             return false;
+        // la password deve essere lunga almeno 8 caratteri
+        if(user.getPassword().length()<8)
+            return false;
+        // la password non deve contenere spazi
+        for(char i : user.getPassword())
+            if(i==' ' || i=='\n')
+                return false;
         // l'username non deve contenere spazi o / o \ e valutare altri caratteri speciali
         for(char i : user.getUsername())
             for(char k: forbiddenChars)
