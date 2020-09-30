@@ -41,6 +41,10 @@ int main() {
         std::cerr << error.what() << std::endl;
         exit(-1);
     }
+
+    if(std::filesystem::is_directory("./temp"))
+        std::filesystem::remove_all("./temp");
+
     boost::asio::io_service io_service;
     Server server(io_service, port, crt, key, crtPsw, dhTemp);
     std::cout << "Il server si sta avviando sulla porta: " << port << std::endl;
