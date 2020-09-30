@@ -307,7 +307,6 @@ void Session::clearBuffer(){
     std::cout << "Il buffer contiene " << bytes_readable << "bytes" << std::endl;
     if(bytes_readable){
         boost::system::error_code ec;
-        // todo: non funziona la read, il buffer non si svuota
         ssize_t bytes_read = boost::asio::read(socket_,boost::asio::buffer(data_, bytes_readable),ec);
         // ignoro gli errori
         std::cout << ec.message() << std::endl;
