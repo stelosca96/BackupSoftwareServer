@@ -19,6 +19,8 @@ namespace pt = boost::property_tree;
 void Server::loadUsers(){
     std::cout << "Load users" << std::endl;
     std::ifstream infile(file_users);
+    if (!infile.is_open())
+        throw filesystemException("Load users file not valid");
     std::string username, hash, salt;
     while (infile >> username >> hash >> salt){
         std::cout << "U: " << username << " P: " << hash << std::endl;
@@ -220,14 +222,7 @@ Server::Server(
 
     try {
         loadUsers();
-        try {
-            loadMaps();
-        } catch (filesystemException &exception) {
-            // todo: se si verifica un errore durante la lettura devo partire da una mappa vuota e aprire un nuovo file
-            // todo: cancellare il file della mappa se presente?
-            // cosa succede se l'utente è presente e la mappa no? penso nulla di grave, lo notifica solamente
-            std::cout << exception.what() << std::endl;
-        }
+        loadMaps();
     } catch (filesystemException &exception) {
         //se si verifica un errore durante la lettura devo partire da una mappa vuota e aprire un nuovo file
         std::cout << exception.what() << std::endl;
