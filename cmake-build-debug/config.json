@@ -4,5 +4,5 @@
   "cert_path": "../cert/user.crt",
   "cert_key": "../cert/user.key",
   "dh_pem": "../cert/dh2048.pem",
-  "max_threads": 1
+  "max_threads": 3
 }
