@@ -19,7 +19,6 @@ private:
     unsigned long file_size = 0;
     bool is_file;
 
-    // todo: il fileStatus serve veramente? magari distinguere tra modificato/eliminato/non_valido
     FileStatus fileStatus = FileStatus::not_valid;
 
     // il file viene aggiunto alla coda di file da modificare,
@@ -30,17 +29,21 @@ private:
     bool is_syncing = false;
 
 public:
-    //todo: togliere costruttore vuoto
-    SyncedFileServer();
+//    SyncedFileServer();
 
     explicit SyncedFileServer(const std::string& JSON);
 
-    SyncedFileServer(SyncedFileServer const &syncedFile);
+//    SyncedFileServer(SyncedFileServer const &syncedFile);
 
     void update_file_data();
     static std::string CalcSha256(const std::string& filename);
-    //todo: costruttore di copia e movimento
     std::string to_string();
+
+    //Deleted solo perchè non li usiamo e perchè evitiamo di usarli inconsciamente
+    SyncedFileServer(SyncedFileServer const &syncedFile)=delete;
+    SyncedFileServer(SyncedFileServer&& syncedFile)=delete;
+    SyncedFileServer& operator=(const SyncedFileServer& syncedFile)=delete;
+    SyncedFileServer&& operator=(SyncedFileServer&& syncedFile)=delete;
 
     bool operator==(const SyncedFileServer &rhs) const;
     bool operator!=(const SyncedFileServer &rhs) const;

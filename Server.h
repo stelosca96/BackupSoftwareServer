@@ -21,9 +21,8 @@ private:
     boost::asio::ssl::context context_;
 
     const std::string file_users = "users_list.conf";
-    const std::string cert_password = "ciao12345";
-    // todo: non permettere nomi che contengano caratteri speciali non possibili su windows
-    std::vector<char> forbiddenChars = {' ', '/', '\\'};
+    const std::string cert_password;
+    std::vector<char> forbiddenChars = {' ', '/', '\\', '.', '"', '[', ']', ':', ',', ';', '|', '=', '\n'};
     std::shared_mutex mutex_map;
     std::mutex mutex_users;
 
@@ -46,7 +45,13 @@ private:
     void do_auth(const std::shared_ptr<Session>& session);
 
 public:
-    Server(boost::asio::io_context& io_context, unsigned short port);
+    Server(boost::asio::io_context& io_context,
+            unsigned short port,
+            const std::string& crt,
+            const std::string& key,
+            std::string cert_password,
+            const std::string& dhTmp
+            );
     void do_accept();
 
 };

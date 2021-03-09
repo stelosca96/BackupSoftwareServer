@@ -16,7 +16,6 @@ static const int K_READ_BUF_SIZE{ 1024 * 16 };
 SyncedFileServer::SyncedFileServer(const std::string& JSON){
 //    std::cout << JSON << std::endl;
 
-    // todo: gestire eccezioni
     std::stringstream ss(JSON);
 
     boost::property_tree::ptree root;
@@ -82,18 +81,17 @@ bool SyncedFileServer::operator!=(const SyncedFileServer &rhs) const {
     return !(rhs == *this);
 }
 
-SyncedFileServer::SyncedFileServer(SyncedFileServer const &syncedFile) {
-    this->fileStatus = syncedFile.fileStatus;
-    this->hash = syncedFile.hash;
-    this->path = syncedFile.path;
-    this->is_file = syncedFile.is_file;
-}
+//SyncedFileServer::SyncedFileServer(SyncedFileServer const &syncedFile) {
+//    this->fileStatus = syncedFile.fileStatus;
+//    this->hash = syncedFile.hash;
+//    this->path = syncedFile.path;
+//    this->is_file = syncedFile.is_file;
+//}
 
-// todo: da rimuovere, ma se lo togli non funziona nulla
-SyncedFileServer::SyncedFileServer() {
-    fileStatus = FileStatus::not_valid;
-    is_file = false;
-}
+//SyncedFileServer::SyncedFileServer() {
+//    fileStatus = FileStatus::not_valid;
+//    is_file = false;
+//}
 
 const std::string &SyncedFileServer::getPath() const {
     return path;
@@ -123,8 +121,6 @@ pt::ptree SyncedFileServer::getPtree(){
     pt::ptree root;
     root.put("path", this->path);
 
-    //todo: devo ricalcolare l'hash e la dimensione (nel caso il file sia stato modificato) o uso quello salvato?
-    // this->update_file_data();
     root.put("hash", this->hash);
     root.put("file_size", this->file_size);
     root.put("file_status", static_cast<int>(this->fileStatus));
@@ -136,7 +132,7 @@ std::string SyncedFileServer::getJSON() {
     pt::ptree root = this->getPtree();
     std::stringstream ss;
     pt::json_parser::write_json(ss, root);
-    std::cout << ss.str() << std::endl;
+//    std::cout << ss.str() << std::endl;
     return ss.str();
 }
 

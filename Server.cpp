@@ -19,6 +19,8 @@ namespace pt = boost::property_tree;
 void Server::loadUsers(){
     std::cout << "Load users" << std::endl;
     std::ifstream infile(file_users);
+    if (!infile.is_open())
+        throw filesystemException("Load users file not valid");
     std::string username, hash, salt;
     while (infile >> username >> hash >> salt){
         std::cout << "U: " << username << " P: " << hash << std::endl;
@@ -29,7 +31,6 @@ void Server::loadUsers(){
 void Server::saveUsername(const User& user){
     // il salvataggio degli utenti è gestito solo dal thread principale quindi non ho bisogno di sincronizzazione
     std::cout << "Save user" << std::endl;
-    // todo: gestire eccezione
     std::ofstream outfile;
     outfile.open(file_users, std::ios_base::app); // append instead of overwrite
     outfile << user.getUsername() << ' ' << user.getHashedPassword() << ' ' << user.getSalt() << std::endl;
@@ -47,7 +48,6 @@ void Server::loadMap(const std::string& username){
     std::shared_lock lock(mutex_map);
     auto user_map = synced_files.find(username)->second;
     lock.unlock();
-    // todo: gestire eccezioni
     pt::ptree root;
     pt::read_json("synced_maps/" + username + ".json", root);
 //    std::cout << "File loaded for " << username << ':' << std::endl;
@@ -66,6 +66,14 @@ void Server::loadMaps(){
         try {
             loadMap(key);
         } catch (std::runtime_error &error) {
+            // se il server non trova la mappa per in utente,
+            // eliminina la rispettiva cartella dei files
+            std::error_code ec;
+            std::filesystem::path user_path("./users_files/");
+            user_path += key;
+            std::filesystem::remove_all(user_path, ec);
+            if (ec.value())
+                std::cout << ec.message() << std::endl;
             // se non riesco a caricare la mappa per un utente, quando il client noterà
             // un cambiamento un file, il server se lo farà rinviare anche se già presente,
             // considerandolo come non presente
@@ -81,6 +89,13 @@ bool Server::auth(User& user){
         // l'username deve essere lungo almeno 3 caratteri
         if(user.getUsername().length()<3)
             return false;
+        // la password deve essere lunga almeno 8 caratteri
+        if(user.getPassword().length()<8)
+            return false;
+        // la password non deve contenere spazi
+        for(char i : user.getPassword())
+            if(i==' ' || i=='\n')
+                return false;
         // l'username non deve contenere spazi o / o \ e valutare altri caratteri speciali
         for(char i : user.getUsername())
             for(char k: forbiddenChars)
@@ -149,7 +164,6 @@ void Server::do_handshake(const std::shared_ptr<Session>& session){
 }
 
 void Server::do_auth(const std::shared_ptr<Session>& session){
-    boost::asio::streambuf buf;
     boost::asio::async_read_until(
             session->getSocket(),
             session->buf,
@@ -169,13 +183,12 @@ void Server::do_auth(const std::shared_ptr<Session>& session){
                         session->buf.consume(bytes_transferred);
                         // rimuovo i terminatori quindi gli ultimi due caratteri
                         std::string json = data.substr(0, data.length()-2);
-                        std::cout << data << "size: " << bytes_transferred << std::endl;
+//                        std::cout << data << "size: " << bytes_transferred << std::endl;
 
                         // creo un oggetto user a partire dal json ed effettuo l'autenticazione
                         User user(json);
                         if(auth(user)){
                             session->setUsername(user.getUsername());
-                            // todo: devo mantenere un lista aggiornata con lo stato delle sessioni tcp aperte
                             std::shared_lock lock(mutex_map);
                             session->setMap(synced_files[user.getUsername()]);
                             lock.unlock();
@@ -193,10 +206,16 @@ void Server::do_auth(const std::shared_ptr<Session>& session){
 }
 
 
-Server::Server(boost::asio::io_context &io_context, unsigned short port):
+Server::Server(
+        boost::asio::io_context &io_context,
+        unsigned short port,
+        const std::string& crt,
+        const std::string& key,
+        std::string cert_password,
+        const std::string& dhTmp):
         acceptor_(io_context, tcp::endpoint(tcp::v4(), port)),
-        context_(boost::asio::ssl::context::tlsv13_server){
-    // todo: gestire un massimo numero di conessioni
+        context_(boost::asio::ssl::context::tlsv13_server),
+        cert_password(std::move(cert_password)){
     // uso tls 1.3, vieto ssl2 e 3, dh per generare una key va rieffettuato ad ogni connessione, Implement various bug workarounds.
     context_.set_options(
             boost::asio::ssl::context::default_workarounds
@@ -204,22 +223,27 @@ Server::Server(boost::asio::io_context &io_context, unsigned short port):
             | boost::asio::ssl::context::no_sslv2
             | boost::asio::ssl::context::single_dh_use);
     context_.set_password_callback(std::bind(&Server::get_password, this));
-    context_.use_certificate_chain_file("../cert/user.crt");
-    context_.use_private_key_file("../cert/user.key", boost::asio::ssl::context::pem);
-    context_.use_tmp_dh_file("../cert/dh2048.pem");
+    context_.use_certificate_chain_file(crt);
+    context_.use_private_key_file(key, boost::asio::ssl::context::pem);
+    context_.use_tmp_dh_file(dhTmp);
 
     try {
         loadUsers();
-        try {
-            loadMaps();
-        } catch (filesystemException &exception) {
-            // todo: se si verifica un errore durante la lettura devo partire da una mappa vuota e aprire un nuovo file
-            // cosa succede se l'utente è presente e la mappa no? penso nulla di grave, lo notifica solamente
-            std::cout << exception.what() << std::endl;
-        }
+        loadMaps();
     } catch (filesystemException &exception) {
         //se si verifica un errore durante la lettura devo partire da una mappa vuota e aprire un nuovo file
         std::cout << exception.what() << std::endl;
+
+        // e cancelo i files dei vecchi utenti
+        std::error_code ec;
+        std::filesystem::path user_files("./users_files/");
+        std::filesystem::path user_maps("./synced_maps/");
+        std::filesystem::remove_all(user_files, ec);
+        if (ec.value())
+            std::cout << ec.message() << std::endl;
+        std::filesystem::remove_all(user_maps, ec);
+        if (ec.value())
+            std::cout << ec.message() << std::endl;
     }
 }
 
